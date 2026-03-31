@@ -15,8 +15,8 @@ import (
 type summaryResult struct {
 	Status     string `json:"status"`
 	Controls   struct {
-		Total         int `json:"total"`
-		Passing       int `json:"passing"`
+		Total          int `json:"total"`
+		Passing        int `json:"passing"`
 		NeedsAttention int `json:"needs_attention"`
 	} `json:"controls"`
 	Monitors struct {
@@ -25,13 +25,14 @@ type summaryResult struct {
 		Failed  int `json:"failed"`
 	} `json:"monitors"`
 	Personnel struct {
-		Total       int `json:"total"`
-		WithIssues  int `json:"with_issues"`
+		Total      int `json:"total"`
+		WithIssues int `json:"with_issues"`
 	} `json:"personnel"`
 	Connections struct {
-		Total      int `json:"total"`
-		Connected  int `json:"connected"`
-		Failed     int `json:"failed"`
+		Total        int `json:"total"`
+		Connected    int `json:"connected"`
+		Disconnected int `json:"disconnected"`
+		Failed       int `json:"failed"`
 	} `json:"connections"`
 	Recommendation string `json:"recommendation,omitempty"`
 }
@@ -42,34 +43,29 @@ func summaryCmd() *cobra.Command {
 		Short: "Overall compliance dashboard",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New()
-			// GetPage (single page, no auto-pagination) for a fast dashboard.
-			// Totals may be approximate when > 50 items exist.
 			var (
 				ctrlItems, monItems, persItems, connItems []json.RawMessage
-				ctrlTotal, monTotal                       int
 				ctrlErr, monErr, persErr, connErr         error
 			)
 			var wg sync.WaitGroup
 			wg.Add(4)
 			go func() {
 				defer wg.Done()
-				ctrlItems, ctrlTotal, ctrlErr = c.GetPage("/public/controls", nil)
+				ctrlItems, ctrlErr = c.GetAll("/public/controls", nil)
 			}()
 			go func() {
 				defer wg.Done()
-				monItems, monTotal, monErr = c.GetPage("/public/monitors", nil)
+				monItems, monErr = c.GetAll("/public/monitors", nil)
 			}()
 			go func() {
 				defer wg.Done()
-				persItems, _, persErr = c.GetPage("/public/personnel", nil)
+				persItems, persErr = c.GetAll("/public/personnel", nil)
 			}()
 			go func() {
 				defer wg.Done()
-				connItems, _, connErr = c.GetPage("/public/connections", nil)
+				connItems, connErr = c.GetAll("/public/connections", nil)
 			}()
 			wg.Wait()
-			_ = ctrlTotal
-			_ = monTotal
 
 			for _, err := range []error{ctrlErr, monErr, persErr, connErr} {
 				if err != nil {
@@ -132,6 +128,8 @@ func summaryCmd() *cobra.Command {
 					result.Connections.Connected++
 				} else if conn.FailedAt != nil {
 					result.Connections.Failed++
+				} else {
+					result.Connections.Disconnected++
 				}
 			}
 
@@ -221,9 +219,10 @@ func formatSummary(r summaryResult) string {
 
 	// Connections
 	sb.WriteString(fmt.Sprintf("  %s\n", output.Bold("Connections")))
-	sb.WriteString(fmt.Sprintf("    total=%d  connected=%s  failed=%s\n",
+	sb.WriteString(fmt.Sprintf("    total=%d  connected=%s  disconnected=%s  failed=%s\n",
 		r.Connections.Total,
 		output.Green(fmt.Sprint(r.Connections.Connected)),
+		output.Yellow(fmt.Sprint(r.Connections.Disconnected)),
 		output.Red(fmt.Sprint(r.Connections.Failed)),
 	))
 
