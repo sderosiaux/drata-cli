@@ -18,6 +18,7 @@ type ProviderType struct {
 type Connection struct {
 	ID            int            `json:"id"`
 	ClientType    string         `json:"clientType"`
+	ClientAlias   string         `json:"clientAlias,omitempty"`
 	State         string         `json:"state"`
 	Connected     bool           `json:"connected"`
 	ConnectedAt   *string        `json:"connectedAt"`
@@ -37,6 +38,9 @@ func connectionState(c Connection) string {
 	}
 	if c.FailedAt != nil {
 		return "FAILED"
+	}
+	if c.ConnectedAt == nil {
+		return "NEVER_CONNECTED"
 	}
 	return "DISCONNECTED"
 }
@@ -77,7 +81,7 @@ func connectionsCmd() *cobra.Command {
 			return nil
 		},
 	}
-	listCmd.Flags().StringVar(&statusFlag, "status", "", "Filter: CONNECTED, DISCONNECTED, FAILED")
+	listCmd.Flags().StringVar(&statusFlag, "status", "", "Filter: CONNECTED, DISCONNECTED, FAILED, NEVER_CONNECTED")
 
 	cmd.AddCommand(listCmd)
 	return cmd
@@ -86,11 +90,20 @@ func connectionsCmd() *cobra.Command {
 func compactConnection(v any) any {
 	switch c := v.(type) {
 	case Connection:
-		return map[string]any{
+		providers := make([]string, len(c.ProviderTypes))
+		for i, p := range c.ProviderTypes {
+			providers[i] = p.Value
+		}
+		m := map[string]any{
 			"id":         c.ID,
 			"clientType": c.ClientType,
 			"status":     connectionState(c),
+			"providers":  providers,
 		}
+		if c.ClientAlias != "" {
+			m["alias"] = c.ClientAlias
+		}
+		return m
 	case connectionsResult:
 		compact := make([]any, len(c.Connections))
 		for i, conn := range c.Connections {
@@ -109,9 +122,9 @@ func formatConnections(r connectionsResult) string {
 		connStatus := connectionState(c)
 		connTime := ""
 		if c.Connected && c.ConnectedAt != nil {
-			connTime = *c.ConnectedAt
+			connTime = "since " + *c.ConnectedAt
 		} else if c.FailedAt != nil {
-			connTime = *c.FailedAt
+			connTime = "failed " + *c.FailedAt
 		}
 
 		providers := make([]string, len(c.ProviderTypes))
@@ -120,10 +133,15 @@ func formatConnections(r connectionsResult) string {
 		}
 		provStr := strings.Join(providers, ", ")
 
+		label := c.ClientType
+		if c.ClientAlias != "" {
+			label = c.ClientAlias + " (" + c.ClientType + ")"
+		}
+
 		fmt.Fprintf(&sb, "  %s  %s  %s  %s\n",
 			output.Col(fmt.Sprint(c.ID), 8),
-			output.Col(output.StatusColor(connStatus), 22),
-			output.Col(c.ClientType, 28),
+			output.Col(output.StatusColor(connStatus), 28),
+			output.Col(label, 36),
 			provStr)
 		if connTime != "" {
 			fmt.Fprintf(&sb, "       %s\n", output.Dim(connTime))

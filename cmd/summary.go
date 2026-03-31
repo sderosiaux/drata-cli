@@ -29,10 +29,11 @@ type summaryResult struct {
 		WithIssues int `json:"with_issues"`
 	} `json:"personnel"`
 	Connections struct {
-		Total        int `json:"total"`
-		Connected    int `json:"connected"`
-		Disconnected int `json:"disconnected"`
-		Failed       int `json:"failed"`
+		Total          int `json:"total"`
+		Connected      int `json:"connected"`
+		Disconnected   int `json:"disconnected"`
+		NeverConnected int `json:"never_connected"`
+		Failed         int `json:"failed"`
 	} `json:"connections"`
 	Recommendation string `json:"recommendation,omitempty"`
 }
@@ -128,21 +129,24 @@ and reports counts by status. Use --json --compact for LLM consumption.`,
 				if err := json.Unmarshal(raw, &conn); err != nil {
 					continue
 				}
-				switch {
-				case conn.Connected:
+				switch connectionState(conn) {
+				case "CONNECTED":
 					result.Connections.Connected++
-				case conn.FailedAt != nil:
+				case "FAILED":
 					result.Connections.Failed++
+				case "NEVER_CONNECTED":
+					result.Connections.NeverConnected++
 				default:
 					result.Connections.Disconnected++
 				}
 			}
 
-			// Overall status
+			// Overall status (never_connected are informational, not actionable issues)
 			hasIssues := result.Controls.NeedsAttention > 0 ||
 				result.Monitors.Failed > 0 ||
 				result.Personnel.WithIssues > 0 ||
-				result.Connections.Failed > 0
+				result.Connections.Failed > 0 ||
+				result.Connections.Disconnected > 0
 			if hasIssues {
 				result.Status = "NEEDS_ATTENTION"
 				result.Recommendation = buildRecommendation(result)
@@ -169,6 +173,12 @@ func buildRecommendation(r summaryResult) string {
 	}
 	if r.Connections.Failed > 0 {
 		parts = append(parts, fmt.Sprintf("reconnect %d failed integration(s)", r.Connections.Failed))
+	}
+	if r.Connections.Disconnected > 0 {
+		parts = append(parts, fmt.Sprintf("reconnect %d disconnected integration(s)", r.Connections.Disconnected))
+	}
+	if r.Connections.NeverConnected > 0 {
+		parts = append(parts, fmt.Sprintf("%d integration(s) never configured — consider removing or completing setup", r.Connections.NeverConnected))
 	}
 	if len(parts) == 0 {
 		return ""
@@ -221,11 +231,12 @@ func formatSummary(r summaryResult) string {
 
 	// Connections
 	fmt.Fprintf(&sb, "  %s\n", output.Bold("Connections"))
-	fmt.Fprintf(&sb, "    total=%d  connected=%s  disconnected=%s  failed=%s\n",
+	fmt.Fprintf(&sb, "    total=%d  connected=%s  disconnected=%s  failed=%s  never_connected=%s\n",
 		r.Connections.Total,
 		output.Green(fmt.Sprint(r.Connections.Connected)),
 		output.Yellow(fmt.Sprint(r.Connections.Disconnected)),
-		output.Red(fmt.Sprint(r.Connections.Failed)))
+		output.Red(fmt.Sprint(r.Connections.Failed)),
+		output.Dim(fmt.Sprint(r.Connections.NeverConnected)))
 
 	if r.Recommendation != "" {
 		fmt.Fprintf(&sb, "\n%s\n", output.Yellow(r.Recommendation))

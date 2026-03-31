@@ -106,6 +106,8 @@ func StatusColor(status string) string {
 		return Red(status)
 	case "NEEDS_EVIDENCE", "NOT_TESTED", "WARNING":
 		return Yellow(status)
+	case "NEVER_CONNECTED":
+		return Dim(status)
 	case "ARCHIVED":
 		return Dim(status)
 	default:
