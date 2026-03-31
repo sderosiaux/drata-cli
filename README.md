@@ -1,5 +1,7 @@
 # drata-cli
 
+![drata-cli](assets/banner.png)
+
 [![CI](https://github.com/sderosiaux/drata-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/sderosiaux/drata-cli/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/sderosiaux/drata-cli)](https://github.com/sderosiaux/drata-cli/releases/latest)
 [![Go version](https://img.shields.io/github/go-mod/go-version/sderosiaux/drata-cli)](go.mod)
