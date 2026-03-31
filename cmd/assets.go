@@ -62,6 +62,7 @@ func assetsCmd() *cobra.Command {
 				result.Assets = append(result.Assets, a)
 			}
 			result.Total = len(items)
+			result.Assets = output.LimitSlice(result.Assets)
 			result.Showing = len(result.Assets)
 
 			output.Print(result, formatAssets(result), compactAsset)

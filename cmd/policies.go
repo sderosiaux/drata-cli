@@ -20,22 +20,6 @@ type Policy struct {
 	PublishedAt *string `json:"publishedAt"`
 }
 
-type UserPolicyPolicy struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-}
-
-type UserPolicyUser struct {
-	Email string `json:"email"`
-	Name  string `json:"name"`
-}
-
-type UserPolicy struct {
-	ID        int              `json:"id"`
-	Policy    UserPolicyPolicy `json:"policy"`
-	User      UserPolicyUser   `json:"user"`
-	CreatedAt string           `json:"createdAt"`
-}
 
 type policiesResult struct {
 	Total    int      `json:"total"`
@@ -43,10 +27,6 @@ type policiesResult struct {
 	Policies []Policy `json:"policies"`
 }
 
-type userPoliciesResult struct {
-	Total    int          `json:"total"`
-	Policies []UserPolicy `json:"policies"`
-}
 
 func policiesCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -73,6 +53,7 @@ func policiesCmd() *cobra.Command {
 				result.Policies = append(result.Policies, p)
 			}
 			result.Total = len(items)
+			result.Policies = output.LimitSlice(result.Policies)
 			result.Showing = len(result.Policies)
 
 			output.Print(result, formatPolicies(result), compactPolicy)
@@ -99,32 +80,7 @@ func policiesCmd() *cobra.Command {
 		},
 	}
 
-	pendingCmd := &cobra.Command{
-		Use:   "pending",
-		Short: "List user-policies not yet acknowledged",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			c := client.New()
-			items, err := c.GetAll("/public/user-policies", nil)
-			if err != nil {
-				return err
-			}
-
-			var result userPoliciesResult
-			for _, raw := range items {
-				var up UserPolicy
-				if err := json.Unmarshal(raw, &up); err != nil {
-					continue
-				}
-				result.Policies = append(result.Policies, up)
-			}
-			result.Total = len(result.Policies)
-
-			output.Print(result, formatUserPolicies(result), compactUserPolicy)
-			return nil
-		},
-	}
-
-	cmd.AddCommand(listCmd, getCmd, pendingCmd)
+	cmd.AddCommand(listCmd, getCmd)
 	return cmd
 }
 
@@ -138,26 +94,10 @@ func compactPolicy(v any) any {
 			compact[i] = compactPolicy(pol)
 		}
 		return map[string]any{"total": p.Total, "showing": p.Showing, "policies": compact}
-	case UserPolicy:
-		return map[string]any{
-			"id":      p.ID,
-			"policy":  p.Policy.Name,
-			"version": p.Policy.Version,
-			"user":    p.User.Email,
-		}
-	case userPoliciesResult:
-		compact := make([]any, len(p.Policies))
-		for i, up := range p.Policies {
-			compact[i] = compactPolicy(up)
-		}
-		return map[string]any{"total": p.Total, "policies": compact}
-	}
+}
 	return v
 }
 
-func compactUserPolicy(v any) any {
-	return compactPolicy(v)
-}
 
 func formatPolicies(r policiesResult) string {
 	var sb strings.Builder
@@ -192,15 +132,3 @@ func formatPolicyDetail(p Policy) string {
 	return sb.String()
 }
 
-func formatUserPolicies(r userPoliciesResult) string {
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  total=%d\n\n", output.Bold("Pending Acknowledgements"), r.Total))
-	for _, up := range r.Policies {
-		sb.WriteString(fmt.Sprintf("  %s  %s  %s\n",
-			output.Col(fmt.Sprint(up.ID), 8),
-			output.Col(up.User.Email, 36),
-			output.Yellow(up.Policy.Name+" v"+up.Policy.Version),
-		))
-	}
-	return sb.String()
-}

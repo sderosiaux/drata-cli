@@ -70,6 +70,7 @@ func connectionsCmd() *cobra.Command {
 				result.Connections = append(result.Connections, conn)
 			}
 			result.Total = len(items)
+			result.Connections = output.LimitSlice(result.Connections)
 			result.Showing = len(result.Connections)
 
 			output.Print(result, formatConnections(result), compactConnection)

@@ -51,6 +51,7 @@ func vendorsCmd() *cobra.Command {
 				result.Vendors = append(result.Vendors, v)
 			}
 			result.Total = len(items)
+			result.Vendors = output.LimitSlice(result.Vendors)
 			result.Showing = len(result.Vendors)
 
 			output.Print(result, formatVendors(result), compactVendor)

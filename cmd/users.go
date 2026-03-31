@@ -52,6 +52,7 @@ func usersCmd() *cobra.Command {
 				result.Users = append(result.Users, u)
 			}
 			result.Total = len(items)
+			result.Users = output.LimitSlice(result.Users)
 			result.Showing = len(result.Users)
 
 			output.Print(result, formatUsers(result), compactUser)

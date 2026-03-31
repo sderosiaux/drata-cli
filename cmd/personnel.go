@@ -63,6 +63,7 @@ func personnelCmd() *cobra.Command {
 				result.Personnel = append(result.Personnel, p)
 			}
 			result.Total = len(items)
+			result.Personnel = output.LimitSlice(result.Personnel)
 			result.Showing = len(result.Personnel)
 
 			output.Print(result, formatPersonnel(result), compactPersonnel)

@@ -59,6 +59,7 @@ func devicesCmd() *cobra.Command {
 				result.Devices = append(result.Devices, d)
 			}
 			result.Total = len(items)
+			result.Devices = output.LimitSlice(result.Devices)
 			result.Showing = len(result.Devices)
 
 			output.Print(result, formatDevices(result), compactDevice)
