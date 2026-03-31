@@ -1,5 +1,9 @@
 # drata-cli
 
+[![CI](https://github.com/sderosiaux/drata-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/sderosiaux/drata-cli/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/sderosiaux/drata-cli)](https://github.com/sderosiaux/drata-cli/releases/latest)
+[![Go version](https://img.shields.io/github/go-mod/go-version/sderosiaux/drata-cli)](go.mod)
+
 A CLI for the [Drata](https://drata.com) compliance platform.
 
 Every command supports `--json` output, which makes it straightforward to pipe into scripts or feed to an LLM. The `--compact` flag strips the fields you don't need.
