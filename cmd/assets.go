@@ -96,21 +96,20 @@ func compactAsset(v any) any {
 
 func formatAssets(r assetsResult) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  total=%d  showing=%d\n\n",
-		output.Bold("Assets"), r.Total, r.Showing))
+	fmt.Fprintf(&sb, "%s  total=%d  showing=%d\n\n",
+		output.Bold("Assets"), r.Total, r.Showing)
 	for _, a := range r.Assets {
 		provider := a.AssetProvider
 		if provider == "" {
 			provider = "-"
 		}
-		sb.WriteString(fmt.Sprintf("  %s  %s  %s  %s\n",
+		fmt.Fprintf(&sb, "  %s  %s  %s  %s\n",
 			output.Col(fmt.Sprint(a.ID), 8),
 			output.Col(output.Cyan(a.AssetType), 14),
 			output.Col(a.Owner.Email, 32),
-			a.Name,
-		))
+			a.Name)
 		if provider != "-" {
-			sb.WriteString(fmt.Sprintf("       provider=%s\n", output.Dim(provider)))
+			fmt.Fprintf(&sb, "       provider=%s\n", output.Dim(provider))
 		}
 	}
 	return sb.String()

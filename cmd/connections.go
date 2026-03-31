@@ -103,8 +103,8 @@ func compactConnection(v any) any {
 
 func formatConnections(r connectionsResult) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  total=%d  showing=%d\n\n",
-		output.Bold("Connections"), r.Total, r.Showing))
+	fmt.Fprintf(&sb, "%s  total=%d  showing=%d\n\n",
+		output.Bold("Connections"), r.Total, r.Showing)
 	for _, c := range r.Connections {
 		connStatus := connectionState(c)
 		connTime := ""
@@ -120,14 +120,13 @@ func formatConnections(r connectionsResult) string {
 		}
 		provStr := strings.Join(providers, ", ")
 
-		sb.WriteString(fmt.Sprintf("  %s  %s  %s  %s\n",
+		fmt.Fprintf(&sb, "  %s  %s  %s  %s\n",
 			output.Col(fmt.Sprint(c.ID), 8),
 			output.Col(output.StatusColor(connStatus), 22),
 			output.Col(c.ClientType, 28),
-			provStr,
-		))
+			provStr)
 		if connTime != "" {
-			sb.WriteString(fmt.Sprintf("       %s\n", output.Dim(connTime)))
+			fmt.Fprintf(&sb, "       %s\n", output.Dim(connTime))
 		}
 	}
 	return sb.String()

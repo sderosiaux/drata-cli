@@ -177,39 +177,37 @@ func daysSince(ts string) float64 {
 
 func formatEvidence(r evidenceResult) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  total=%d  showing=%d\n\n",
-		output.Bold("Evidence Library"), r.Total, r.Showing))
+	fmt.Fprintf(&sb, "%s  total=%d  showing=%d\n\n",
+		output.Bold("Evidence Library"), r.Total, r.Showing)
 	for _, e := range r.Evidence {
 		days := daysSince(e.UpdatedAt)
 		daysStr := ""
 		if days >= 0 {
 			daysStr = fmt.Sprintf("%.0fd ago", days)
 		}
-		sb.WriteString(fmt.Sprintf("  %s  %s  versions=%d  %s\n",
+		fmt.Fprintf(&sb, "  %s  %s  versions=%d  %s\n",
 			output.Col(fmt.Sprint(e.ID), 8),
 			output.Col(e.Name, 40),
 			len(e.Versions),
-			output.Dim(daysStr),
-		))
+			output.Dim(daysStr))
 	}
 	return sb.String()
 }
 
 func formatEvidenceExpiring(r evidenceResult, days int) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  (not updated in >%d days)  count=%d\n\n",
-		output.Bold(output.Yellow("Stale Evidence")), days, r.Showing))
+	fmt.Fprintf(&sb, "%s  (not updated in >%d days)  count=%d\n\n",
+		output.Bold(output.Yellow("Stale Evidence")), days, r.Showing)
 	for _, e := range r.Evidence {
 		d := daysSince(e.UpdatedAt)
 		daysStr := "unknown"
 		if d >= 0 {
 			daysStr = fmt.Sprintf("%.0f days ago", d)
 		}
-		sb.WriteString(fmt.Sprintf("  %s  %s  %s\n",
+		fmt.Fprintf(&sb, "  %s  %s  %s\n",
 			output.Col(fmt.Sprint(e.ID), 8),
 			output.Col(e.Name, 40),
-			output.Yellow(daysStr),
-		))
+			output.Yellow(daysStr))
 	}
 	return sb.String()
 }

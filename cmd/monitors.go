@@ -27,26 +27,26 @@ type Monitor struct {
 }
 
 type monitorInstanceDetail struct {
-	FailedTestDescription        string `json:"failedTestDescription"`
-	RemedyDescription            string `json:"remedyDescription"`
+	FailedTestDescription         string `json:"failedTestDescription"`
+	RemedyDescription             string `json:"remedyDescription"`
 	EvidenceCollectionDescription string `json:"evidenceCollectionDescription"`
 }
 
 type MonitorInstance struct {
-	ID                int                    `json:"id"`
-	Name              string                 `json:"name"`
-	Description       string                 `json:"description"`
-	CheckResultStatus string                 `json:"checkResultStatus"`
-	CheckStatus       string                 `json:"checkStatus"`
-	Priority          string                 `json:"priority"`
-	LastCheck         *string                `json:"lastCheck"`
-	Controls          []MonitorControl       `json:"controls"`
+	ID                int                     `json:"id"`
+	Name              string                  `json:"name"`
+	Description       string                  `json:"description"`
+	CheckResultStatus string                  `json:"checkResultStatus"`
+	CheckStatus       string                  `json:"checkStatus"`
+	Priority          string                  `json:"priority"`
+	LastCheck         *string                 `json:"lastCheck"`
+	Controls          []MonitorControl        `json:"controls"`
 	MonitorInstances  []monitorInstanceDetail `json:"monitorInstances"`
 }
 
 type monitorsResult struct {
-	Total   int       `json:"total"`
-	Showing int       `json:"showing"`
+	Total    int       `json:"total"`
+	Showing  int       `json:"showing"`
 	Monitors []Monitor `json:"monitors"`
 }
 
@@ -210,37 +210,35 @@ func compactMonitor(v any) any {
 
 func formatMonitors(r monitorsResult) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  total=%d  showing=%d\n\n",
-		output.Bold("Monitors"), r.Total, r.Showing))
+	fmt.Fprintf(&sb, "%s  total=%d  showing=%d\n\n",
+		output.Bold("Monitors"), r.Total, r.Showing)
 	for _, m := range r.Monitors {
 		lastCheck := "never"
 		if m.LastCheck != nil {
 			lastCheck = *m.LastCheck
 		}
-		sb.WriteString(fmt.Sprintf("  %s  %s  %s  %s\n",
+		fmt.Fprintf(&sb, "  %s  %s  %s  %s\n",
 			output.Col(fmt.Sprint(m.ID), 8),
 			output.Col(output.StatusColor(m.CheckResultStatus), 22),
 			output.Col(output.Dim(lastCheck), 26),
-			m.Name,
-		))
+			m.Name)
 	}
 	return sb.String()
 }
 
 func formatMonitorsFailing(r monitorsResult) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  count=%d\n\n", output.Bold(output.Red("Failing Monitors")), r.Showing))
+	fmt.Fprintf(&sb, "%s  count=%d\n\n", output.Bold(output.Red("Failing Monitors")), r.Showing)
 	for _, m := range r.Monitors {
 		codes := make([]string, len(m.Controls))
 		for i, c := range m.Controls {
 			codes[i] = c.Code
 		}
-		sb.WriteString(fmt.Sprintf("  %s  %s\n",
+		fmt.Fprintf(&sb, "  %s  %s\n",
 			output.Col(fmt.Sprint(m.ID), 8),
-			m.Name,
-		))
+			m.Name)
 		if len(codes) > 0 {
-			sb.WriteString(fmt.Sprintf("       controls: %s\n", output.Cyan(strings.Join(codes, ", "))))
+			fmt.Fprintf(&sb, "       controls: %s\n", output.Cyan(strings.Join(codes, ", ")))
 		}
 	}
 	return sb.String()
@@ -248,22 +246,22 @@ func formatMonitorsFailing(r monitorsResult) string {
 
 func formatMonitorInstance(m MonitorInstance) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  [%d]\n", output.Bold(m.Name), m.ID))
-	sb.WriteString(fmt.Sprintf("Status:   %s\n", output.StatusColor(m.CheckResultStatus)))
-	sb.WriteString(fmt.Sprintf("Priority: %s\n", m.Priority))
+	fmt.Fprintf(&sb, "%s  [%d]\n", output.Bold(m.Name), m.ID)
+	fmt.Fprintf(&sb, "Status:   %s\n", output.StatusColor(m.CheckResultStatus))
+	fmt.Fprintf(&sb, "Priority: %s\n", m.Priority)
 	if m.LastCheck != nil {
-		sb.WriteString(fmt.Sprintf("Last check: %s\n", *m.LastCheck))
+		fmt.Fprintf(&sb, "Last check: %s\n", *m.LastCheck)
 	}
 	if len(m.MonitorInstances) > 0 {
 		inst := m.MonitorInstances[0]
 		if inst.FailedTestDescription != "" {
-			sb.WriteString(fmt.Sprintf("\n%s\n%s\n", output.Bold("Failed Test:"), inst.FailedTestDescription))
+			fmt.Fprintf(&sb, "\n%s\n%s\n", output.Bold("Failed Test:"), inst.FailedTestDescription)
 		}
 		if inst.RemedyDescription != "" {
-			sb.WriteString(fmt.Sprintf("\n%s\n%s\n", output.Bold("Remedy:"), inst.RemedyDescription))
+			fmt.Fprintf(&sb, "\n%s\n%s\n", output.Bold("Remedy:"), inst.RemedyDescription)
 		}
 		if inst.EvidenceCollectionDescription != "" {
-			sb.WriteString(fmt.Sprintf("\n%s\n%s\n", output.Bold("Evidence collection:"), inst.EvidenceCollectionDescription))
+			fmt.Fprintf(&sb, "\n%s\n%s\n", output.Bold("Evidence collection:"), inst.EvidenceCollectionDescription)
 		}
 	}
 	if len(m.Controls) > 0 {
@@ -271,7 +269,7 @@ func formatMonitorInstance(m MonitorInstance) string {
 		for i, c := range m.Controls {
 			codes[i] = c.Code
 		}
-		sb.WriteString(fmt.Sprintf("\nControls: %s\n", output.Cyan(strings.Join(codes, ", "))))
+		fmt.Fprintf(&sb, "\nControls: %s\n", output.Cyan(strings.Join(codes, ", ")))
 	}
 	return sb.String()
 }

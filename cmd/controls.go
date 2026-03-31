@@ -69,14 +69,14 @@ func enrich(c Control) enrichedControl {
 }
 
 type controlsResult struct {
-	Total   int    `json:"total"`
-	Showing int    `json:"showing"`
+	Total   int `json:"total"`
+	Showing int `json:"showing"`
 	Summary struct {
-		Passing      int `json:"passing"`
-		NotReady     int `json:"not_ready"`
-		NoOwner      int `json:"no_owner"`
+		Passing       int `json:"passing"`
+		NotReady      int `json:"not_ready"`
+		NoOwner       int `json:"no_owner"`
 		NeedsEvidence int `json:"needs_evidence"`
-		Archived     int `json:"archived"`
+		Archived      int `json:"archived"`
 	} `json:"summary"`
 	Controls []enrichedControl `json:"controls"`
 }
@@ -315,23 +315,21 @@ func compactControl(v any) any {
 
 func formatControls(r controlsResult) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  total=%d  showing=%d\n",
+	fmt.Fprintf(&sb, "%s  total=%d  showing=%d\n",
 		output.Bold("Controls"),
-		r.Total, r.Showing))
-	sb.WriteString(fmt.Sprintf("  passing=%s  not_ready=%s  no_owner=%s  needs_evidence=%s  archived=%s\n\n",
+		r.Total, r.Showing)
+	fmt.Fprintf(&sb, "  passing=%s  not_ready=%s  no_owner=%s  needs_evidence=%s  archived=%s\n\n",
 		output.Green(fmt.Sprint(r.Summary.Passing)),
 		output.Red(fmt.Sprint(r.Summary.NotReady)),
 		output.Red(fmt.Sprint(r.Summary.NoOwner)),
 		output.Yellow(fmt.Sprint(r.Summary.NeedsEvidence)),
-		output.Dim(fmt.Sprint(r.Summary.Archived)),
-	))
+		output.Dim(fmt.Sprint(r.Summary.Archived)))
 
 	for _, c := range r.Controls {
-		sb.WriteString(fmt.Sprintf("  %s  %s  %s\n",
+		fmt.Fprintf(&sb, "  %s  %s  %s\n",
 			output.Col(output.Cyan(c.Code), 12),
 			output.Col(output.StatusColor(c.Status), 26),
-			c.Name,
-		))
+			c.Name)
 	}
 	return sb.String()
 }

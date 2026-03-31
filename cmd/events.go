@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strings"
 
-
 	"github.com/spf13/cobra"
 
 	"github.com/sderosiaux/drata-cli/internal/client"
@@ -102,19 +101,18 @@ func compactEvent(v any) any {
 
 func formatEvents(r eventsResult) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  total=%d  showing=%d\n\n",
-		output.Bold("Events"), r.Total, r.Showing))
+	fmt.Fprintf(&sb, "%s  total=%d  showing=%d\n\n",
+		output.Bold("Events"), r.Total, r.Showing)
 	for _, e := range r.Events {
 		userStr := ""
 		if e.User.Email != "" {
 			userStr = output.Dim(e.User.Email)
 		}
-		sb.WriteString(fmt.Sprintf("  %s  %s  %s  %s\n",
+		fmt.Fprintf(&sb, "  %s  %s  %s  %s\n",
 			output.Col(output.Cyan(e.Category), 16),
 			output.Col(output.Dim(e.CreatedAt), 28),
 			output.Col(userStr, 30),
-			e.Description,
-		))
+			e.Description)
 	}
 	return sb.String()
 }

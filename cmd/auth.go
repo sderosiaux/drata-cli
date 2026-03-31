@@ -43,8 +43,8 @@ The env var DRATA_API_KEY always takes precedence over the stored key.`,
 			if err := config.WriteKey(key); err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stdout, "API key saved to %s\n", path)
-			fmt.Fprintln(os.Stdout, "Run 'drata auth check' to verify.")
+			_, _ = fmt.Fprintf(os.Stdout, "API key saved to %s\n", path)
+			_, _ = fmt.Fprintln(os.Stdout, "Run 'drata auth check' to verify.")
 			return nil
 		},
 	}

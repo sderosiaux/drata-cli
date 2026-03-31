@@ -93,24 +93,18 @@ func compactDevice(v any) any {
 
 func formatDevices(r devicesResult) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  total=%d  showing=%d\n\n",
-		output.Bold("Devices"), r.Total, r.Showing))
+	fmt.Fprintf(&sb, "%s  total=%d  showing=%d\n\n",
+		output.Bold("Devices"), r.Total, r.Showing)
 	for _, d := range r.Devices {
-		osInfo := d.Platform
-		if d.OsVersion != "" {
-			osInfo += " " + d.OsVersion
-		}
-		sb.WriteString(fmt.Sprintf("  %s  %s  %s  %s\n",
+		fmt.Fprintf(&sb, "  %s  %s  %s  %s\n",
 			output.Col(fmt.Sprint(d.ID), 8),
 			output.Col(output.Cyan(d.Platform), 14),
 			output.Col(d.User.Email, 36),
-			d.Name,
-		))
+			d.Name)
 		if d.SerialNumber != "" {
-			sb.WriteString(fmt.Sprintf("       serial=%s  os=%s\n",
+			fmt.Fprintf(&sb, "       serial=%s  os=%s\n",
 				output.Dim(d.SerialNumber),
-				output.Dim(d.OsVersion),
-			))
+				output.Dim(d.OsVersion))
 		}
 	}
 	return sb.String()

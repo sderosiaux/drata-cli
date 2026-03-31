@@ -20,13 +20,11 @@ type Policy struct {
 	PublishedAt *string `json:"publishedAt"`
 }
 
-
 type policiesResult struct {
 	Total    int      `json:"total"`
 	Showing  int      `json:"showing"`
 	Policies []Policy `json:"policies"`
 }
-
 
 func policiesCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -94,41 +92,38 @@ func compactPolicy(v any) any {
 			compact[i] = compactPolicy(pol)
 		}
 		return map[string]any{"total": p.Total, "showing": p.Showing, "policies": compact}
-}
+	}
 	return v
 }
 
-
 func formatPolicies(r policiesResult) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  total=%d  showing=%d\n\n",
-		output.Bold("Policies"), r.Total, r.Showing))
+	fmt.Fprintf(&sb, "%s  total=%d  showing=%d\n\n",
+		output.Bold("Policies"), r.Total, r.Showing)
 	for _, p := range r.Policies {
 		updated := ""
 		if p.UpdatedAt != nil {
 			updated = *p.UpdatedAt
 		}
-		sb.WriteString(fmt.Sprintf("  %s  %s  %s  %s\n",
+		fmt.Fprintf(&sb, "  %s  %s  %s  %s\n",
 			output.Col(fmt.Sprint(p.ID), 8),
 			output.Col(output.StatusColor(p.Status), 22),
 			output.Col(output.Dim(updated), 26),
-			p.Name,
-		))
+			p.Name)
 	}
 	return sb.String()
 }
 
 func formatPolicyDetail(p Policy) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  [%d]\n", output.Bold(p.Name), p.ID))
-	sb.WriteString(fmt.Sprintf("Status:  %s\n", output.StatusColor(p.Status)))
-	sb.WriteString(fmt.Sprintf("Version: %s\n", p.Version))
+	fmt.Fprintf(&sb, "%s  [%d]\n", output.Bold(p.Name), p.ID)
+	fmt.Fprintf(&sb, "Status:  %s\n", output.StatusColor(p.Status))
+	fmt.Fprintf(&sb, "Version: %s\n", p.Version)
 	if p.UpdatedAt != nil {
-		sb.WriteString(fmt.Sprintf("Updated: %s\n", *p.UpdatedAt))
+		fmt.Fprintf(&sb, "Updated: %s\n", *p.UpdatedAt)
 	}
 	if p.PublishedAt != nil {
-		sb.WriteString(fmt.Sprintf("Published: %s\n", *p.PublishedAt))
+		fmt.Fprintf(&sb, "Published: %s\n", *p.PublishedAt)
 	}
 	return sb.String()
 }
-

@@ -116,27 +116,26 @@ func riskColor(risk string) string {
 
 func formatVendors(r vendorsResult) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  total=%d  showing=%d\n\n",
-		output.Bold("Vendors"), r.Total, r.Showing))
+	fmt.Fprintf(&sb, "%s  total=%d  showing=%d\n\n",
+		output.Bold("Vendors"), r.Total, r.Showing)
 	for _, v := range r.Vendors {
-		sb.WriteString(fmt.Sprintf("  %s  %s  %s  %s\n",
+		fmt.Fprintf(&sb, "  %s  %s  %s  %s\n",
 			output.Col(fmt.Sprint(v.ID), 8),
 			output.Col(output.StatusColor(v.Status), 22),
 			output.Col(riskColor(v.RiskLevel), 16),
-			v.Name,
-		))
+			v.Name)
 	}
 	return sb.String()
 }
 
 func formatVendorDetail(v Vendor) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  [%d]\n", output.Bold(v.Name), v.ID))
-	sb.WriteString(fmt.Sprintf("Status:   %s\n", output.StatusColor(v.Status)))
-	sb.WriteString(fmt.Sprintf("Risk:     %s\n", riskColor(v.RiskLevel)))
-	sb.WriteString(fmt.Sprintf("Category: %s\n", v.Category))
+	fmt.Fprintf(&sb, "%s  [%d]\n", output.Bold(v.Name), v.ID)
+	fmt.Fprintf(&sb, "Status:   %s\n", output.StatusColor(v.Status))
+	fmt.Fprintf(&sb, "Risk:     %s\n", riskColor(v.RiskLevel))
+	fmt.Fprintf(&sb, "Category: %s\n", v.Category)
 	if v.Website != "" {
-		sb.WriteString(fmt.Sprintf("Website:  %s\n", output.Cyan(v.Website)))
+		fmt.Fprintf(&sb, "Website:  %s\n", output.Cyan(v.Website))
 	}
 	return sb.String()
 }

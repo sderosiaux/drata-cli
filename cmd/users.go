@@ -85,18 +85,17 @@ func compactUser(v any) any {
 
 func formatUsers(r usersResult) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  total=%d  showing=%d\n\n",
-		output.Bold("Users"), r.Total, r.Showing))
+	fmt.Fprintf(&sb, "%s  total=%d  showing=%d\n\n",
+		output.Bold("Users"), r.Total, r.Showing)
 	for _, u := range r.Users {
 		name := strings.TrimSpace(u.FirstName + " " + u.LastName)
 		roles := strings.Join(u.Roles, ", ")
-		sb.WriteString(fmt.Sprintf("  %s  %s  %s\n",
+		fmt.Fprintf(&sb, "  %s  %s  %s\n",
 			output.Col(fmt.Sprint(u.ID), 8),
 			output.Col(u.Email, 36),
-			name,
-		))
+			name)
 		if roles != "" {
-			sb.WriteString(fmt.Sprintf("       roles=%s\n", output.Dim(roles)))
+			fmt.Fprintf(&sb, "       roles=%s\n", output.Dim(roles))
 		}
 	}
 	return sb.String()

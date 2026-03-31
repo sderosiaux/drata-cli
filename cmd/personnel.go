@@ -19,12 +19,12 @@ type PersonnelUser struct {
 }
 
 type Personnel struct {
-	ID                           int           `json:"id"`
-	User                         PersonnelUser `json:"user"`
-	EmploymentStatus             string        `json:"employmentStatus"`
-	StartDate                    *string       `json:"startDate"`
-	DevicesCount                 int           `json:"devicesCount"`
-	DevicesFailingComplianceCount int          `json:"devicesFailingComplianceCount"`
+	ID                            int           `json:"id"`
+	User                          PersonnelUser `json:"user"`
+	EmploymentStatus              string        `json:"employmentStatus"`
+	StartDate                     *string       `json:"startDate"`
+	DevicesCount                  int           `json:"devicesCount"`
+	DevicesFailingComplianceCount int           `json:"devicesFailingComplianceCount"`
 }
 
 type personnelResult struct {
@@ -152,9 +152,9 @@ func compactPersonnel(v any) any {
 	switch p := v.(type) {
 	case Personnel:
 		return map[string]any{
-			"id":     p.ID,
-			"email":  p.User.Email,
-			"status": p.EmploymentStatus,
+			"id":              p.ID,
+			"email":           p.User.Email,
+			"status":          p.EmploymentStatus,
 			"failing_devices": p.DevicesFailingComplianceCount,
 		}
 	case personnelResult:
@@ -169,37 +169,35 @@ func compactPersonnel(v any) any {
 
 func formatPersonnel(r personnelResult) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  total=%d  showing=%d\n\n",
-		output.Bold("Personnel"), r.Total, r.Showing))
+	fmt.Fprintf(&sb, "%s  total=%d  showing=%d\n\n",
+		output.Bold("Personnel"), r.Total, r.Showing)
 	for _, p := range r.Personnel {
 		name := strings.TrimSpace(p.User.FirstName + " " + p.User.LastName)
 		failStr := ""
 		if p.DevicesFailingComplianceCount > 0 {
 			failStr = output.Red(fmt.Sprintf(" [%d failing]", p.DevicesFailingComplianceCount))
 		}
-		sb.WriteString(fmt.Sprintf("  %s  %s  %s%s\n",
+		fmt.Fprintf(&sb, "  %s  %s  %s%s\n",
 			output.Col(fmt.Sprint(p.ID), 8),
 			output.Col(output.StatusColor(p.EmploymentStatus), 28),
 			output.Col(p.User.Email, 36),
-			name+failStr,
-		))
+			name+failStr)
 	}
 	return sb.String()
 }
 
 func formatPersonnelIssues(r personnelResult) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  count=%d\n\n", output.Bold(output.Red("Personnel with Device Issues")), r.Showing))
+	fmt.Fprintf(&sb, "%s  count=%d\n\n", output.Bold(output.Red("Personnel with Device Issues")), r.Showing)
 	for _, p := range r.Personnel {
 		name := strings.TrimSpace(p.User.FirstName + " " + p.User.LastName)
-		sb.WriteString(fmt.Sprintf("  %s  %s  devices=%d  failing=%s\n",
+		fmt.Fprintf(&sb, "  %s  %s  devices=%d  failing=%s\n",
 			output.Col(fmt.Sprint(p.ID), 8),
 			output.Col(p.User.Email, 36),
 			p.DevicesCount,
-			output.Red(fmt.Sprint(p.DevicesFailingComplianceCount)),
-		))
+			output.Red(fmt.Sprint(p.DevicesFailingComplianceCount)))
 		if name != "" {
-			sb.WriteString(fmt.Sprintf("       name: %s\n", name))
+			fmt.Fprintf(&sb, "       name: %s\n", name)
 		}
 	}
 	return sb.String()
@@ -208,17 +206,16 @@ func formatPersonnelIssues(r personnelResult) string {
 func formatPersonnelDetail(p Personnel) string {
 	name := strings.TrimSpace(p.User.FirstName + " " + p.User.LastName)
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  [%d]\n", output.Bold(p.User.Email), p.ID))
+	fmt.Fprintf(&sb, "%s  [%d]\n", output.Bold(p.User.Email), p.ID)
 	if name != "" {
-		sb.WriteString(fmt.Sprintf("Name:   %s\n", name))
+		fmt.Fprintf(&sb, "Name:   %s\n", name)
 	}
-	sb.WriteString(fmt.Sprintf("Status: %s\n", output.StatusColor(p.EmploymentStatus)))
+	fmt.Fprintf(&sb, "Status: %s\n", output.StatusColor(p.EmploymentStatus))
 	if p.StartDate != nil {
-		sb.WriteString(fmt.Sprintf("Start:  %s\n", *p.StartDate))
+		fmt.Fprintf(&sb, "Start:  %s\n", *p.StartDate)
 	}
-	sb.WriteString(fmt.Sprintf("Devices: %d total, %s failing compliance\n",
+	fmt.Fprintf(&sb, "Devices: %d total, %s failing compliance\n",
 		p.DevicesCount,
-		output.Red(fmt.Sprint(p.DevicesFailingComplianceCount)),
-	))
+		output.Red(fmt.Sprint(p.DevicesFailingComplianceCount)))
 	return sb.String()
 }

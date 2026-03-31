@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,9 +14,9 @@ import (
 )
 
 const (
-	maxRetries   = 3
-	pageSize     = 50
-	baseDelayMs  = 500
+	maxRetries  = 3
+	pageSize    = 50
+	baseDelayMs = 500
 )
 
 type Client struct {
@@ -95,8 +96,8 @@ func (c *Client) GetAll(path string, params url.Values) ([]json.RawMessage, erro
 		// data may be an array or wrapped differently
 		var items []json.RawMessage
 		if err := json.Unmarshal(pr.Data, &items); err != nil {
-			// not an array — return raw as single
-			return []json.RawMessage{raw}, nil
+			// not an array — return raw as single item; unmarshal error is intentionally discarded
+			return []json.RawMessage{raw}, nil //nolint:nilerr
 		}
 
 		all = append(all, items...)
@@ -122,7 +123,7 @@ func (c *Client) do(path string, params url.Values) (json.RawMessage, error) {
 			time.Sleep(time.Duration(baseDelayMs*(1<<(attempt-1))) * time.Millisecond)
 		}
 
-		req, err := http.NewRequest("GET", u, nil)
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -134,7 +135,7 @@ func (c *Client) do(path string, params url.Values) (json.RawMessage, error) {
 			lastErr = err
 			continue
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {

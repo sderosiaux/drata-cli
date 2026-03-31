@@ -1,0 +1,40 @@
+version: "2"
+
+linters:
+  default: standard   # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose
+    - contextcheck
+    - durationcheck
+    - errorlint
+    - exhaustive
+    - forcetypeassert
+    - gocritic
+    - gosec
+    - makezero
+    - misspell
+    - nilerr
+    - noctx
+    - prealloc
+    - revive
+    - unconvert
+    - unparam
+    - wastedassign
+  settings:
+    exhaustive:
+      default-signifies-exhaustive: true
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: unused-parameter
+          disabled: true    # cobra RunE signature requires cmd *cobra.Command
+        - name: package-comments
+          disabled: true
+    gosec:
+      excludes:
+        - G304   # file path from variable — expected in config.WriteKey
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
