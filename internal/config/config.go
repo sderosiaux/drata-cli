@@ -20,13 +20,9 @@ var validRegions = map[string]string{
 }
 
 func Init(region string) error {
-	home, err := os.UserHomeDir()
-	if err == nil {
-		viper.AddConfigPath(filepath.Join(home, ".config", "drata-cli"))
-		viper.SetConfigName("config")
-		viper.SetConfigType("yaml")
-		// ignore "file not found" errors — config is optional
-		_ = viper.ReadInConfig()
+	if path, err := ConfigPath(); err == nil {
+		viper.SetConfigFile(path)
+		_ = viper.ReadInConfig() // ignore "file not found" — config is optional
 	}
 
 	viper.SetEnvPrefix("DRATA")
@@ -55,4 +51,38 @@ func Init(region string) error {
 
 func BaseURL() string {
 	return validRegions[Region]
+}
+
+// ConfigPath returns the path to the config file following XDG Base Directory spec.
+// Uses $XDG_CONFIG_HOME if set, otherwise defaults to ~/.config.
+func ConfigPath() (string, error) {
+	base := os.Getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		base = filepath.Join(home, ".config")
+	}
+	return filepath.Join(base, "drata-cli", "config.yaml"), nil
+}
+
+// WriteKey persists the API key to ~/.config/drata-cli/config.yaml.
+func WriteKey(apiKey string) error {
+	path, err := ConfigPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+
+	// Read existing content to preserve other keys (e.g. region).
+	viper.SetConfigFile(path)
+	_ = viper.ReadInConfig()
+	viper.Set("api_key", apiKey)
+	if err := viper.WriteConfigAs(path); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	return nil
 }

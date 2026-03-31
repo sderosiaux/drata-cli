@@ -39,10 +39,13 @@ LLM/script usage:
 		if noColorFlag {
 			color.NoColor = true
 		}
-		output.SetJSON(jsonFlag) // also sets color.NoColor = true
+		output.SetJSON(jsonFlag)
 		output.SetCompact(compactFlag)
 		output.SetLimit(limitFlag)
 
+		if cmd.Annotations["skip_auth"] == "true" {
+			return nil
+		}
 		return config.Init(regionFlag)
 	},
 	SilenceUsage:  true,
@@ -63,6 +66,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&regionFlag, "region", "", "API region: us, eu, apac (default: us or DRATA_REGION)")
 
 	rootCmd.AddCommand(
+		authCmd(),
 		controlsCmd(),
 		monitorsCmd(),
 		personnelCmd(),
