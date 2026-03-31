@@ -17,12 +17,13 @@ var rootCmd = &cobra.Command{
 	Short: "Drata compliance platform CLI",
 	Long: `CLI for the Drata compliance platform.
 
-Authentication (required):
-  export DRATA_API_KEY=<your-api-key>
+Authentication:
+  drata auth set-key <api-key>     # persist to $XDG_CONFIG_HOME/drata-cli/config.yaml
+  drata auth check                 # verify key + show workspace
+  export DRATA_API_KEY=<api-key>   # env var overrides stored key
 
 Optional:
   export DRATA_REGION=us|eu|apac   (default: us)
-  Or: ~/.config/drata-cli/config.yaml
 
 LLM/script usage:
   drata summary --json --compact
