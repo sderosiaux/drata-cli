@@ -4,9 +4,11 @@
 [![Release](https://img.shields.io/github/v/release/sderosiaux/drata-cli)](https://github.com/sderosiaux/drata-cli/releases/latest)
 [![Go version](https://img.shields.io/github/go-mod/go-version/sderosiaux/drata-cli)](go.mod)
 
-A CLI for the [Drata](https://drata.com) compliance platform.
+> You're not the user. Your LLM is.
+>
+> You don't need to read this README. Your agent does. Install it, run `drata --help`, and let the LLM figure it out. Every command embeds its own usage guide, `--json` mode outputs structured data an agent can parse without you writing a single adapter, and `--compact` strips the noise down to what matters. This page is here because GitHub expects one.
 
-Every command supports `--json` output, which makes it straightforward to pipe into scripts or feed to an LLM. The `--compact` flag strips the fields you don't need.
+A CLI for the [Drata](https://drata.com) compliance platform.
 
 ## Install
 
