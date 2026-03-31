@@ -36,6 +36,7 @@ func devicesCmd() *cobra.Command {
 		Short: "Manage employee devices",
 	}
 
+	var userFlag string
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all devices",
@@ -52,6 +53,9 @@ func devicesCmd() *cobra.Command {
 				if err := json.Unmarshal(raw, &d); err != nil {
 					continue
 				}
+				if userFlag != "" && !strings.EqualFold(d.User.Email, userFlag) {
+					continue
+				}
 				result.Devices = append(result.Devices, d)
 			}
 			result.Total = len(items)
@@ -61,6 +65,7 @@ func devicesCmd() *cobra.Command {
 			return nil
 		},
 	}
+	listCmd.Flags().StringVar(&userFlag, "user", "", "Filter by user email")
 
 	cmd.AddCommand(listCmd)
 	return cmd

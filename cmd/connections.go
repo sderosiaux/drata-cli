@@ -31,12 +31,23 @@ type connectionsResult struct {
 	Connections []Connection `json:"connections"`
 }
 
+func connectionState(c Connection) string {
+	if c.Connected {
+		return "CONNECTED"
+	}
+	if c.FailedAt != nil {
+		return "FAILED"
+	}
+	return "DISCONNECTED"
+}
+
 func connectionsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "connections",
 		Short: "Manage integrations and connections",
 	}
 
+	var statusFlag string
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all connections",
@@ -53,6 +64,9 @@ func connectionsCmd() *cobra.Command {
 				if err := json.Unmarshal(raw, &conn); err != nil {
 					continue
 				}
+				if statusFlag != "" && connectionState(conn) != strings.ToUpper(statusFlag) {
+					continue
+				}
 				result.Connections = append(result.Connections, conn)
 			}
 			result.Total = len(items)
@@ -62,6 +76,7 @@ func connectionsCmd() *cobra.Command {
 			return nil
 		},
 	}
+	listCmd.Flags().StringVar(&statusFlag, "status", "", "Filter: CONNECTED, DISCONNECTED, FAILED")
 
 	cmd.AddCommand(listCmd)
 	return cmd
@@ -73,8 +88,7 @@ func compactConnection(v any) any {
 		return map[string]any{
 			"id":         c.ID,
 			"clientType": c.ClientType,
-			"state":      c.State,
-			"connected":  c.Connected,
+			"status":     connectionState(c),
 		}
 	case connectionsResult:
 		compact := make([]any, len(c.Connections))
@@ -91,15 +105,11 @@ func formatConnections(r connectionsResult) string {
 	sb.WriteString(fmt.Sprintf("%s  total=%d  showing=%d\n\n",
 		output.Bold("Connections"), r.Total, r.Showing))
 	for _, c := range r.Connections {
-		connStatus := "DISCONNECTED"
+		connStatus := connectionState(c)
 		connTime := ""
-		if c.Connected {
-			connStatus = "CONNECTED"
-			if c.ConnectedAt != nil {
-				connTime = *c.ConnectedAt
-			}
+		if c.Connected && c.ConnectedAt != nil {
+			connTime = *c.ConnectedAt
 		} else if c.FailedAt != nil {
-			connStatus = "FAILED"
 			connTime = *c.FailedAt
 		}
 
