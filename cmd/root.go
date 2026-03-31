@@ -13,9 +13,22 @@ const version = "0.1.0"
 var regionFlag string
 
 var rootCmd = &cobra.Command{
-	Use:     "drata",
-	Short:   "Drata compliance platform CLI",
-	Long:    "CLI for the Drata compliance platform. Covers controls, monitors, personnel, policies, vendors, devices, evidence, events, assets, users and more.",
+	Use:   "drata",
+	Short: "Drata compliance platform CLI",
+	Long: `CLI for the Drata compliance platform.
+
+Authentication (required):
+  export DRATA_API_KEY=<your-api-key>
+
+Optional:
+  export DRATA_REGION=us|eu|apac   (default: us)
+  Or: ~/.config/drata-cli/config.yaml
+
+LLM/script usage:
+  drata summary --json --compact
+  drata controls failing --json
+  drata monitors failing --json
+  drata monitors get <id> --json`,
 	Version: version,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		jsonFlag, _ := cmd.Flags().GetBool("json")

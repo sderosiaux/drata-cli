@@ -41,6 +41,10 @@ func summaryCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "summary",
 		Short: "Overall compliance dashboard",
+		Long: `Fetches controls, monitors, personnel, and connections in parallel
+and reports counts by status. Use --json --compact for LLM consumption.`,
+		Example: `  drata summary
+  drata summary --json --compact`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New()
 			var (

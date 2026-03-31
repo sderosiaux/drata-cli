@@ -94,7 +94,18 @@ func controlsCmd() *cobra.Command {
 	)
 	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: "List all controls",
+		Short: "List all controls with derived compliance status",
+		Long: `List all controls. Status is derived by the CLI (not an API field):
+  PASSING        monitored and has evidence
+  NEEDS_EVIDENCE missing evidence upload
+  NOT_READY      control not configured
+  NO_OWNER       no owner assigned
+  READY          configured but not yet monitored
+  ARCHIVED       archived control (excluded from compliance score)`,
+		Example: `  drata controls list
+  drata controls list --status NO_OWNER
+  drata controls list --status NEEDS_EVIDENCE --json --compact
+  drata controls list --search "MFA"`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New()
 			params := url.Values{}
@@ -141,12 +152,13 @@ func controlsCmd() *cobra.Command {
 		},
 	}
 	listCmd.Flags().StringVar(&statusFlag, "status", "", "Filter: PASSING, NOT_READY, NO_OWNER, NEEDS_EVIDENCE, ARCHIVED")
-	listCmd.Flags().StringVar(&searchFlag, "search", "", "Search term")
+	listCmd.Flags().StringVar(&searchFlag, "search", "", "Full-text search on control name or code")
 
 	// failing
 	failingCmd := &cobra.Command{
-		Use:   "failing",
-		Short: "List controls with issues (NOT_READY, NO_OWNER, NEEDS_EVIDENCE)",
+		Use:     "failing",
+		Short:   "List controls with issues (NOT_READY, NO_OWNER, NEEDS_EVIDENCE)",
+		Example: "  drata controls failing --json --compact",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New()
 			items, err := c.GetAll("/public/controls", nil)

@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 
+
 	"github.com/spf13/cobra"
 
 	"github.com/sderosiaux/drata-cli/internal/client"
@@ -38,21 +39,18 @@ func eventsCmd() *cobra.Command {
 		Short: "View audit events",
 	}
 
-	var (
-		categoryFlag string
-		limitFlag    int
-	)
+	var categoryFlag string
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List audit events",
+		Example: `  drata events list
+  drata events list --category MONITOR --json
+  drata events list --limit 20 --json --compact`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New()
 			params := url.Values{}
 			if categoryFlag != "" {
 				params.Set("category", categoryFlag)
-			}
-			if limitFlag > 0 {
-				params.Set("limit", fmt.Sprint(limitFlag))
 			}
 
 			items, err := c.GetAll("/public/events", params)
@@ -69,6 +67,7 @@ func eventsCmd() *cobra.Command {
 				result.Events = append(result.Events, e)
 			}
 			result.Total = len(items)
+			result.Events = output.LimitSlice(result.Events)
 			result.Showing = len(result.Events)
 
 			output.Print(result, formatEvents(result), compactEvent)
@@ -76,7 +75,6 @@ func eventsCmd() *cobra.Command {
 		},
 	}
 	listCmd.Flags().StringVar(&categoryFlag, "category", "", "Filter: PERSONNEL, CONTROL, MONITOR, CONNECTION, POLICY, VENDOR")
-	listCmd.Flags().IntVar(&limitFlag, "limit", 50, "Max events to return")
 
 	cmd.AddCommand(listCmd)
 	return cmd

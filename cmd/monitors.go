@@ -90,8 +90,9 @@ func monitorsCmd() *cobra.Command {
 	listCmd.Flags().StringVar(&statusFlag, "status", "", "Filter: PASSED, FAILED, NOT_TESTED")
 
 	failingCmd := &cobra.Command{
-		Use:   "failing",
-		Short: "List FAILED monitors with affected controls",
+		Use:     "failing",
+		Short:   "List FAILED monitors with affected controls",
+		Example: "  drata monitors failing\n  drata monitors failing --json --compact",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New()
 			params := url.Values{"checkResultStatus": []string{"FAILED"}}
@@ -118,9 +119,10 @@ func monitorsCmd() *cobra.Command {
 	}
 
 	getCmd := &cobra.Command{
-		Use:   "get <id>",
-		Short: "Get monitor details by ID (includes failure description and remedy)",
-		Args:  cobra.ExactArgs(1),
+		Use:     "get <id>",
+		Short:   "Get monitor details by ID (includes failure description and remedy)",
+		Example: "  drata monitors get 31\n  drata monitors get 31 --json",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// GET /public/monitors/{id} doesn't exist in Drata public API.
 			// Fetch full list (which includes monitorInstances) and find by ID.
