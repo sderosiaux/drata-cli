@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Format check
+unformatted=$(gofmt -l .)
+if [[ -n "$unformatted" ]]; then
+  echo "Go files need formatting (run 'go fmt ./...'):"
+  echo "$unformatted"
+  exit 1
+fi
+
+# Vet
+go vet ./...
+
+# Lint (skip if golangci-lint not in PATH)
+if command -v golangci-lint &>/dev/null; then
+  golangci-lint run ./...
+fi
