@@ -30,10 +30,12 @@ type Finding struct {
 }
 
 type findingsResult struct {
-	MonitorID int       `json:"monitorId"`
-	Total     int       `json:"total"`
-	Showing   int       `json:"showing"`
-	Findings  []Finding `json:"findings"`
+	MonitorID  int              `json:"monitorId"`
+	Controls   []MonitorControl `json:"controls,omitempty"`
+	Frameworks []string         `json:"frameworks,omitempty"`
+	Total      int              `json:"total"`
+	Showing    int              `json:"showing"`
+	Findings   []Finding        `json:"findings"`
 }
 
 // CheckResult represents a single check execution in the monitor's history.
@@ -62,16 +64,97 @@ type MonitorDetail struct {
 }
 
 type historyResult struct {
-	MonitorID    int           `json:"monitorId"`
-	MonitorName  string        `json:"monitorName"`
-	Total        int           `json:"total"`
-	Showing      int           `json:"showing"`
-	CheckResults []CheckResult `json:"checkResults"`
+	MonitorID    int              `json:"monitorId"`
+	MonitorName  string           `json:"monitorName"`
+	Controls     []MonitorControl `json:"controls,omitempty"`
+	Total        int              `json:"total"`
+	Showing      int              `json:"showing"`
+	CheckResults []CheckResult    `json:"checkResults"`
 }
 
 type MonitorControl struct {
-	ID   int    `json:"id"`
-	Code string `json:"code"`
+	ID         int      `json:"id"`
+	Code       string   `json:"code"`
+	Frameworks []string `json:"frameworkTags,omitempty"`
+}
+
+// controlFrameworkMap fetches all controls from the API and returns a map
+// from control ID to framework tags (e.g., ["SOC_2", "PCI_DSS", "HIPAA"]).
+// Returns an empty map on error (best-effort — never blocks display).
+func controlFrameworkMap(c *client.Client) map[int][]string {
+	items, err := c.GetAll("/public/controls", nil)
+	if err != nil {
+		return map[int][]string{}
+	}
+	m := make(map[int][]string, len(items))
+	for _, raw := range items {
+		var ctrl struct {
+			ID         int      `json:"id"`
+			Frameworks []string `json:"frameworkTags"`
+		}
+		if err := json.Unmarshal(raw, &ctrl); err != nil {
+			continue
+		}
+		if len(ctrl.Frameworks) > 0 {
+			m[ctrl.ID] = ctrl.Frameworks
+		}
+	}
+	return m
+}
+
+// enrichControlsWithFrameworks annotates MonitorControl slices with framework
+// tags from the pre-fetched map. Controls that already have inline frameworks
+// (from the API) are left untouched.
+func enrichControlsWithFrameworks(controls []MonitorControl, fwMap map[int][]string) {
+	for i := range controls {
+		if len(controls[i].Frameworks) == 0 {
+			if fws, ok := fwMap[controls[i].ID]; ok {
+				controls[i].Frameworks = fws
+			}
+		}
+	}
+}
+
+// frameworkDisplay formats framework tags for human display.
+// "SOC_2" → "SOC 2", "PCI_DSS" → "PCI DSS", etc.
+func frameworkDisplay(tags []string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	names := make([]string, len(tags))
+	for i, t := range tags {
+		names[i] = strings.ReplaceAll(t, "_", " ")
+	}
+	return strings.Join(names, ", ")
+}
+
+// controlCodesWithFrameworks formats control codes with framework names.
+// e.g., "DCF-71 (SOC 2, PCI DSS), DCF-85 (HIPAA)"
+func controlCodesWithFrameworks(controls []MonitorControl) string {
+	parts := make([]string, len(controls))
+	for i, c := range controls {
+		if len(c.Frameworks) > 0 {
+			parts[i] = fmt.Sprintf("%s (%s)", c.Code, frameworkDisplay(c.Frameworks))
+		} else {
+			parts[i] = c.Code
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// uniqueFrameworks returns the deduplicated set of framework tags across all controls.
+func uniqueFrameworks(controls []MonitorControl) []string {
+	seen := map[string]bool{}
+	var result []string
+	for _, c := range controls {
+		for _, f := range c.Frameworks {
+			if !seen[f] {
+				seen[f] = true
+				result = append(result, f)
+			}
+		}
+	}
+	return result
 }
 
 type Monitor struct {
@@ -116,9 +199,12 @@ func monitorsCmd() *cobra.Command {
 	var statusFlag string
 	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: "List all monitors",
+		Short: "List all monitors with compliance framework context",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New()
+
+			fwMap := controlFrameworkMap(c)
+
 			params := url.Values{}
 			if statusFlag != "" {
 				params.Set("checkResultStatus", statusFlag)
@@ -134,6 +220,7 @@ func monitorsCmd() *cobra.Command {
 				if err := json.Unmarshal(raw, &m); err != nil {
 					continue
 				}
+				enrichControlsWithFrameworks(m.Controls, fwMap)
 				result.Monitors = append(result.Monitors, m)
 			}
 			result.Total = len(items)
@@ -148,10 +235,14 @@ func monitorsCmd() *cobra.Command {
 
 	failingCmd := &cobra.Command{
 		Use:     "failing",
-		Short:   "List FAILED monitors with affected controls",
+		Short:   "List FAILED monitors with affected controls and compliance frameworks",
 		Example: "  drata monitors failing\n  drata monitors failing --json --compact",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New()
+
+			// Fetch framework mapping for enrichment
+			fwMap := controlFrameworkMap(c)
+
 			params := url.Values{"checkResultStatus": []string{"FAILED"}}
 			items, err := c.GetAll("/public/monitors", params)
 			if err != nil {
@@ -164,6 +255,7 @@ func monitorsCmd() *cobra.Command {
 				if err := json.Unmarshal(raw, &m); err != nil {
 					continue
 				}
+				enrichControlsWithFrameworks(m.Controls, fwMap)
 				result.Monitors = append(result.Monitors, m)
 			}
 			result.Total = len(items)
@@ -177,7 +269,7 @@ func monitorsCmd() *cobra.Command {
 
 	getCmd := &cobra.Command{
 		Use:     "get <id>",
-		Short:   "Get monitor details by ID (includes failure description and remedy)",
+		Short:   "Get monitor details by ID (includes failure description, remedy, and frameworks)",
 		Example: "  drata monitors get 31\n  drata monitors get 31 --json",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -185,6 +277,10 @@ func monitorsCmd() *cobra.Command {
 			// Fetch full list (which includes monitorInstances) and find by ID.
 			targetID := args[0]
 			c := client.New()
+
+			// Fetch controls → framework mapping in parallel with monitors
+			fwMap := controlFrameworkMap(c)
+
 			items, err := c.GetAll("/public/monitors", nil)
 			if err != nil {
 				return err
@@ -195,6 +291,7 @@ func monitorsCmd() *cobra.Command {
 					continue
 				}
 				if fmt.Sprint(m.ID) == targetID {
+					enrichControlsWithFrameworks(m.Controls, fwMap)
 					output.Print(m, formatMonitorInstance(m), func(v any) any {
 						if mi, ok := v.(MonitorInstance); ok {
 							return map[string]any{
@@ -215,11 +312,14 @@ func monitorsCmd() *cobra.Command {
 	// for-control — list monitors that reference a given control code
 	forControlCmd := &cobra.Command{
 		Use:   "for-control <code>",
-		Short: "List monitors linked to a control code (e.g. DCF-71)",
+		Short: "List monitors linked to a control code (e.g. DCF-71), with frameworks",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			code := args[0]
 			c := client.New()
+
+			fwMap := controlFrameworkMap(c)
+
 			items, err := c.GetAll("/public/monitors", nil)
 			if err != nil {
 				return err
@@ -233,6 +333,7 @@ func monitorsCmd() *cobra.Command {
 				}
 				for _, ctrl := range m.Controls {
 					if ctrl.Code == code {
+						enrichControlsWithFrameworks(m.Controls, fwMap)
 						result.Monitors = append(result.Monitors, m)
 						break
 					}
@@ -250,13 +351,32 @@ func monitorsCmd() *cobra.Command {
 	// findings — show failing resources for a monitor
 	findingsCmd := &cobra.Command{
 		Use:     "findings <id>",
-		Short:   "Show findings (failing resources) for a monitor",
-		Long:    "Lists the specific resources that are causing a monitor to fail, e.g. which S3 bucket, which ALB, which account.",
+		Short:   "Show findings (failing resources) for a monitor, with compliance framework context",
+		Long:    "Lists the specific resources that are causing a monitor to fail, e.g. which S3 bucket, which ALB, which account. Shows which compliance frameworks are affected.",
 		Example: "  drata monitors findings 31\n  drata monitors findings 31 --json\n  drata monitors findings 31 --json --compact",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			testID := args[0]
 			c := client.New()
+
+			// Fetch framework mapping and monitor controls for context
+			fwMap := controlFrameworkMap(c)
+
+			// Look up this monitor's controls from the monitors list
+			monitorItems, _ := c.GetAll("/public/monitors", nil)
+			var monitorControls []MonitorControl
+			for _, raw := range monitorItems {
+				var m Monitor
+				if err := json.Unmarshal(raw, &m); err != nil {
+					continue
+				}
+				if fmt.Sprint(m.ID) == testID {
+					monitorControls = m.Controls
+					break
+				}
+			}
+			enrichControlsWithFrameworks(monitorControls, fwMap)
+
 			wsID, err := getWorkspaceID(c)
 			if err != nil {
 				return err
@@ -277,6 +397,8 @@ func monitorsCmd() *cobra.Command {
 				result.Findings = append(result.Findings, f)
 			}
 			result.MonitorID, _ = strconv.Atoi(testID)
+			result.Controls = monitorControls
+			result.Frameworks = uniqueFrameworks(monitorControls)
 			result.Total = len(result.Findings)
 			result.Findings = output.LimitSlice(result.Findings)
 			result.Showing = len(result.Findings)
@@ -290,12 +412,16 @@ func monitorsCmd() *cobra.Command {
 	historyCmd := &cobra.Command{
 		Use:     "history <id>",
 		Short:   "Show check history (pass/fail over time) for a monitor",
-		Long:    "Shows when checks ran, whether they passed or failed, and pass/fail counts over time.",
+		Long:    "Shows when checks ran, whether they passed or failed, and pass/fail counts over time. Includes compliance frameworks.",
 		Example: "  drata monitors history 31\n  drata monitors history 31 --json\n  drata monitors history 31 --limit 10",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			testID := args[0]
 			c := client.New()
+
+			// Fetch framework mapping for enrichment
+			fwMap := controlFrameworkMap(c)
+
 			wsID, err := getWorkspaceID(c)
 			if err != nil {
 				return err
@@ -312,9 +438,12 @@ func monitorsCmd() *cobra.Command {
 				return fmt.Errorf("parse monitor detail: %w", err)
 			}
 
+			enrichControlsWithFrameworks(detail.Controls, fwMap)
+
 			var result historyResult
 			result.MonitorID = detail.ID
 			result.MonitorName = detail.Name
+			result.Controls = detail.Controls
 			result.CheckResults = detail.CheckResults
 			result.Total = len(result.CheckResults)
 			result.CheckResults = output.LimitSlice(result.CheckResults)
@@ -332,7 +461,12 @@ func monitorsCmd() *cobra.Command {
 func compactMonitor(v any) any {
 	switch m := v.(type) {
 	case Monitor:
-		return map[string]any{"id": m.ID, "name": m.Name, "status": m.CheckResultStatus}
+		fws := uniqueFrameworks(m.Controls)
+		result := map[string]any{"id": m.ID, "name": m.Name, "status": m.CheckResultStatus}
+		if len(fws) > 0 {
+			result["frameworks"] = fws
+		}
+		return result
 	case monitorsResult:
 		compact := make([]any, len(m.Monitors))
 		for i, mon := range m.Monitors {
@@ -352,11 +486,17 @@ func formatMonitors(r monitorsResult) string {
 		if m.LastCheck != nil {
 			lastCheck = *m.LastCheck
 		}
-		fmt.Fprintf(&sb, "  %s  %s  %s  %s\n",
+		fws := uniqueFrameworks(m.Controls)
+		fwStr := ""
+		if len(fws) > 0 {
+			fwStr = "  " + output.Dim("["+frameworkDisplay(fws)+"]")
+		}
+		fmt.Fprintf(&sb, "  %s  %s  %s  %s%s\n",
 			output.Col(fmt.Sprint(m.ID), 8),
 			output.Col(output.StatusColor(m.CheckResultStatus), 22),
 			output.Col(output.Dim(lastCheck), 26),
-			m.Name)
+			m.Name,
+			fwStr)
 	}
 	return sb.String()
 }
@@ -365,15 +505,15 @@ func formatMonitorsFailing(r monitorsResult) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "%s  count=%d\n\n", output.Bold(output.Red("Failing Monitors")), r.Showing)
 	for _, m := range r.Monitors {
-		codes := make([]string, len(m.Controls))
-		for i, c := range m.Controls {
-			codes[i] = c.Code
-		}
 		fmt.Fprintf(&sb, "  %s  %s\n",
 			output.Col(fmt.Sprint(m.ID), 8),
 			m.Name)
-		if len(codes) > 0 {
-			fmt.Fprintf(&sb, "       controls: %s\n", output.Cyan(strings.Join(codes, ", ")))
+		if len(m.Controls) > 0 {
+			fmt.Fprintf(&sb, "       controls: %s\n", output.Cyan(controlCodesWithFrameworks(m.Controls)))
+		}
+		fws := uniqueFrameworks(m.Controls)
+		if len(fws) > 0 {
+			fmt.Fprintf(&sb, "       frameworks: %s\n", output.Yellow(frameworkDisplay(fws)))
 		}
 	}
 	return sb.String()
@@ -427,8 +567,15 @@ func compactHistory(v any) any {
 
 func formatFindings(r findingsResult) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "%s  monitor=%d  total=%d  showing=%d\n\n",
+	fmt.Fprintf(&sb, "%s  monitor=%d  total=%d  showing=%d\n",
 		output.Bold("Findings"), r.MonitorID, r.Total, r.Showing)
+	if len(r.Controls) > 0 {
+		fmt.Fprintf(&sb, "Controls: %s\n", output.Cyan(controlCodesWithFrameworks(r.Controls)))
+	}
+	if len(r.Frameworks) > 0 {
+		fmt.Fprintf(&sb, "Frameworks: %s\n", output.Yellow(frameworkDisplay(r.Frameworks)))
+	}
+	fmt.Fprintln(&sb)
 
 	if len(r.Findings) == 0 {
 		fmt.Fprintf(&sb, "  %s\n", output.Green("No findings — all resources passing."))
@@ -485,8 +632,16 @@ func formatHistory(r historyResult) string {
 	if header == "" {
 		header = fmt.Sprintf("Monitor %d", r.MonitorID)
 	}
-	fmt.Fprintf(&sb, "%s  total=%d  showing=%d\n\n",
+	fmt.Fprintf(&sb, "%s  total=%d  showing=%d\n",
 		output.Bold("Check History: "+header), r.Total, r.Showing)
+	if len(r.Controls) > 0 {
+		fmt.Fprintf(&sb, "Controls: %s\n", output.Cyan(controlCodesWithFrameworks(r.Controls)))
+		fws := uniqueFrameworks(r.Controls)
+		if len(fws) > 0 {
+			fmt.Fprintf(&sb, "Frameworks: %s\n", output.Yellow(frameworkDisplay(fws)))
+		}
+	}
+	fmt.Fprintln(&sb)
 
 	if len(r.CheckResults) == 0 {
 		fmt.Fprintf(&sb, "  %s\n", output.Dim("No check history available."))
@@ -562,11 +717,11 @@ func formatMonitorInstance(m MonitorInstance) string {
 		}
 	}
 	if len(m.Controls) > 0 {
-		codes := make([]string, len(m.Controls))
-		for i, c := range m.Controls {
-			codes[i] = c.Code
-		}
-		fmt.Fprintf(&sb, "\nControls: %s\n", output.Cyan(strings.Join(codes, ", ")))
+		fmt.Fprintf(&sb, "\nControls: %s\n", output.Cyan(controlCodesWithFrameworks(m.Controls)))
+	}
+	fws := uniqueFrameworks(m.Controls)
+	if len(fws) > 0 {
+		fmt.Fprintf(&sb, "Frameworks: %s\n", output.Yellow(frameworkDisplay(fws)))
 	}
 	return sb.String()
 }
