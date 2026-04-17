@@ -4,13 +4,70 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/sderosiaux/drata-cli/internal/client"
 	"github.com/sderosiaux/drata-cli/internal/output"
 )
+
+// Finding represents a single failing resource for a monitor.
+type Finding struct {
+	ID                 int     `json:"id"`
+	ResourceExternalID string  `json:"resourceExternalId"`
+	ResourceType       string  `json:"resourceType"`
+	ResourceName       string  `json:"resourceName"`
+	AccountID          string  `json:"accountId"`
+	Region             string  `json:"region"`
+	Status             string  `json:"status"`
+	Description        string  `json:"description"`
+	FailedAt           *string `json:"failedAt"`
+	ConnectionName     string  `json:"connectionName"`
+	IsExcluded         bool    `json:"isExcluded"`
+}
+
+type findingsResult struct {
+	MonitorID int       `json:"monitorId"`
+	Total     int       `json:"total"`
+	Showing   int       `json:"showing"`
+	Findings  []Finding `json:"findings"`
+}
+
+// CheckResult represents a single check execution in the monitor's history.
+type CheckResult struct {
+	ID        int     `json:"id"`
+	Status    string  `json:"status"`
+	CheckedAt *string `json:"checkedAt"`
+	CreatedAt *string `json:"createdAt"`
+	Passed    *int    `json:"passed"`
+	Failed    *int    `json:"failed"`
+	Error     *string `json:"error"`
+}
+
+// MonitorDetail represents the detailed response for a monitor,
+// including its check result history.
+type MonitorDetail struct {
+	ID                int              `json:"id"`
+	Name              string           `json:"name"`
+	Description       string           `json:"description"`
+	CheckResultStatus string           `json:"checkResultStatus"`
+	CheckStatus       string           `json:"checkStatus"`
+	Priority          string           `json:"priority"`
+	LastCheck         *string          `json:"lastCheck"`
+	Controls          []MonitorControl `json:"controls"`
+	CheckResults      []CheckResult    `json:"checkResults"`
+}
+
+type historyResult struct {
+	MonitorID    int           `json:"monitorId"`
+	MonitorName  string        `json:"monitorName"`
+	Total        int           `json:"total"`
+	Showing      int           `json:"showing"`
+	CheckResults []CheckResult `json:"checkResults"`
+}
 
 type MonitorControl struct {
 	ID   int    `json:"id"`
@@ -190,7 +247,85 @@ func monitorsCmd() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(listCmd, failingCmd, getCmd, forControlCmd)
+	// findings — show failing resources for a monitor
+	findingsCmd := &cobra.Command{
+		Use:     "findings <id>",
+		Short:   "Show findings (failing resources) for a monitor",
+		Long:    "Lists the specific resources that are causing a monitor to fail, e.g. which S3 bucket, which ALB, which account.",
+		Example: "  drata monitors findings 31\n  drata monitors findings 31 --json\n  drata monitors findings 31 --json --compact",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			testID := args[0]
+			c := client.New()
+			wsID, err := getWorkspaceID(c)
+			if err != nil {
+				return err
+			}
+
+			path := fmt.Sprintf("/public/workspaces/%d/monitors/%s/failures", wsID, testID)
+			items, err := c.GetAll(path, nil)
+			if err != nil {
+				return fmt.Errorf("fetch findings for monitor %s: %w", testID, err)
+			}
+
+			var result findingsResult
+			for _, raw := range items {
+				var f Finding
+				if err := json.Unmarshal(raw, &f); err != nil {
+					continue
+				}
+				result.Findings = append(result.Findings, f)
+			}
+			result.MonitorID, _ = strconv.Atoi(testID)
+			result.Total = len(result.Findings)
+			result.Findings = output.LimitSlice(result.Findings)
+			result.Showing = len(result.Findings)
+
+			output.Print(result, formatFindings(result), compactFinding)
+			return nil
+		},
+	}
+
+	// history — show check history for a monitor
+	historyCmd := &cobra.Command{
+		Use:     "history <id>",
+		Short:   "Show check history (pass/fail over time) for a monitor",
+		Long:    "Shows when checks ran, whether they passed or failed, and pass/fail counts over time.",
+		Example: "  drata monitors history 31\n  drata monitors history 31 --json\n  drata monitors history 31 --limit 10",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			testID := args[0]
+			c := client.New()
+			wsID, err := getWorkspaceID(c)
+			if err != nil {
+				return err
+			}
+
+			path := fmt.Sprintf("/public/workspaces/%d/monitors/%s/details", wsID, testID)
+			raw, err := c.Get(path)
+			if err != nil {
+				return fmt.Errorf("fetch history for monitor %s: %w", testID, err)
+			}
+
+			var detail MonitorDetail
+			if err := json.Unmarshal(raw, &detail); err != nil {
+				return fmt.Errorf("parse monitor detail: %w", err)
+			}
+
+			var result historyResult
+			result.MonitorID = detail.ID
+			result.MonitorName = detail.Name
+			result.CheckResults = detail.CheckResults
+			result.Total = len(result.CheckResults)
+			result.CheckResults = output.LimitSlice(result.CheckResults)
+			result.Showing = len(result.CheckResults)
+
+			output.Print(result, formatHistory(result), compactHistory)
+			return nil
+		},
+	}
+
+	cmd.AddCommand(listCmd, failingCmd, getCmd, forControlCmd, findingsCmd, historyCmd)
 	return cmd
 }
 
@@ -242,6 +377,168 @@ func formatMonitorsFailing(r monitorsResult) string {
 		}
 	}
 	return sb.String()
+}
+
+func compactFinding(v any) any {
+	switch f := v.(type) {
+	case Finding:
+		return map[string]any{
+			"resourceExternalId": f.ResourceExternalID,
+			"resourceType":       f.ResourceType,
+			"status":             f.Status,
+			"accountId":          f.AccountID,
+			"region":             f.Region,
+		}
+	case findingsResult:
+		compact := make([]any, len(f.Findings))
+		for i, finding := range f.Findings {
+			compact[i] = compactFinding(finding)
+		}
+		return map[string]any{"monitorId": f.MonitorID, "total": f.Total, "showing": f.Showing, "findings": compact}
+	}
+	return v
+}
+
+func compactHistory(v any) any {
+	switch h := v.(type) {
+	case CheckResult:
+		ts := ""
+		if h.CheckedAt != nil {
+			ts = *h.CheckedAt
+		} else if h.CreatedAt != nil {
+			ts = *h.CreatedAt
+		}
+		return map[string]any{"status": h.Status, "checkedAt": ts}
+	case historyResult:
+		compact := make([]any, len(h.CheckResults))
+		for i, cr := range h.CheckResults {
+			compact[i] = compactHistory(cr)
+		}
+		return map[string]any{
+			"monitorId":    h.MonitorID,
+			"monitorName":  h.MonitorName,
+			"total":        h.Total,
+			"showing":      h.Showing,
+			"checkResults": compact,
+		}
+	}
+	return v
+}
+
+func formatFindings(r findingsResult) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "%s  monitor=%d  total=%d  showing=%d\n\n",
+		output.Bold("Findings"), r.MonitorID, r.Total, r.Showing)
+
+	if len(r.Findings) == 0 {
+		fmt.Fprintf(&sb, "  %s\n", output.Green("No findings — all resources passing."))
+		return sb.String()
+	}
+
+	for _, f := range r.Findings {
+		status := f.Status
+		if status == "" {
+			status = "FAILED"
+		}
+		excludedTag := ""
+		if f.IsExcluded {
+			excludedTag = output.Dim(" [excluded]")
+		}
+		name := f.ResourceName
+		if name == "" {
+			name = f.ResourceExternalID
+		}
+		fmt.Fprintf(&sb, "  %s  %s%s\n",
+			output.Col(output.StatusColor(status), 22),
+			name,
+			excludedTag)
+
+		var details []string
+		if f.ResourceType != "" {
+			details = append(details, "type="+f.ResourceType)
+		}
+		if f.AccountID != "" {
+			details = append(details, "account="+f.AccountID)
+		}
+		if f.Region != "" {
+			details = append(details, "region="+f.Region)
+		}
+		if f.ConnectionName != "" {
+			details = append(details, "connection="+f.ConnectionName)
+		}
+		if f.FailedAt != nil {
+			details = append(details, "failed="+shortTime(*f.FailedAt))
+		}
+		if len(details) > 0 {
+			fmt.Fprintf(&sb, "       %s\n", output.Dim(strings.Join(details, "  ")))
+		}
+		if f.Description != "" {
+			fmt.Fprintf(&sb, "       %s\n", output.Dim(f.Description))
+		}
+	}
+	return sb.String()
+}
+
+func formatHistory(r historyResult) string {
+	var sb strings.Builder
+	header := r.MonitorName
+	if header == "" {
+		header = fmt.Sprintf("Monitor %d", r.MonitorID)
+	}
+	fmt.Fprintf(&sb, "%s  total=%d  showing=%d\n\n",
+		output.Bold("Check History: "+header), r.Total, r.Showing)
+
+	if len(r.CheckResults) == 0 {
+		fmt.Fprintf(&sb, "  %s\n", output.Dim("No check history available."))
+		return sb.String()
+	}
+
+	for _, cr := range r.CheckResults {
+		ts := ""
+		if cr.CheckedAt != nil {
+			ts = shortTime(*cr.CheckedAt)
+		} else if cr.CreatedAt != nil {
+			ts = shortTime(*cr.CreatedAt)
+		}
+		counts := ""
+		if cr.Passed != nil || cr.Failed != nil {
+			p, f := 0, 0
+			if cr.Passed != nil {
+				p = *cr.Passed
+			}
+			if cr.Failed != nil {
+				f = *cr.Failed
+			}
+			counts = fmt.Sprintf("  passed=%s failed=%s",
+				output.Green(fmt.Sprint(p)),
+				output.Red(fmt.Sprint(f)))
+		}
+		errMsg := ""
+		if cr.Error != nil && *cr.Error != "" {
+			errMsg = "  " + output.Red("error: "+*cr.Error)
+		}
+		fmt.Fprintf(&sb, "  %s  %s%s%s\n",
+			output.Col(output.Dim(ts), 22),
+			output.StatusColor(cr.Status),
+			counts,
+			errMsg)
+	}
+	return sb.String()
+}
+
+// shortTime formats an ISO timestamp for display, showing date and time.
+func shortTime(ts string) string {
+	for _, layout := range []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05.000Z",
+		"2006-01-02T15:04:05Z",
+		time.RFC3339Nano,
+	} {
+		if t, err := time.Parse(layout, ts); err == nil {
+			return t.Format("2006-01-02 15:04")
+		}
+	}
+	return ts
 }
 
 func formatMonitorInstance(m MonitorInstance) string {
