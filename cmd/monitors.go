@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -15,61 +14,95 @@ import (
 )
 
 // Finding represents a single failing resource for a monitor.
+// Matches the Drata v1 API response from /public/workspaces/{wsID}/monitors/{testId}/failures.
 type Finding struct {
-	ID                 int     `json:"id"`
-	ResourceExternalID string  `json:"resourceExternalId"`
-	ResourceType       string  `json:"resourceType"`
-	ResourceName       string  `json:"resourceName"`
-	AccountID          string  `json:"accountId"`
-	Region             string  `json:"region"`
-	Status             string  `json:"status"`
-	Description        string  `json:"description"`
-	FailedAt           *string `json:"failedAt"`
-	ConnectionName     string  `json:"connectionName"`
-	IsExcluded         bool    `json:"isExcluded"`
+	ID             string          `json:"id"`
+	ProviderName   string          `json:"providerName"`
+	ClientID       string          `json:"clientId"`
+	ClientAlias    string          `json:"clientAlias"`
+	ResourceName   string          `json:"resourceName"`
+	DisplayName    string          `json:"displayName"`
+	AccountID      string          `json:"accountId"`
+	AccountName    *string         `json:"accountName"`
+	FailingMessage string          `json:"failingMessage"`
+	ResourceArn    string          `json:"resourceArn"`
+	Cause          json.RawMessage `json:"cause"`
 }
 
 type findingsResult struct {
-	MonitorID  int              `json:"monitorId"`
-	Controls   []MonitorControl `json:"controls,omitempty"`
-	Frameworks []string         `json:"frameworks,omitempty"`
-	Total      int              `json:"total"`
-	Showing    int              `json:"showing"`
-	Findings   []Finding        `json:"findings"`
+	MonitorID   int              `json:"monitorId"`
+	MonitorName string           `json:"monitorName"`
+	Controls    []MonitorControl `json:"controls,omitempty"`
+	Frameworks  []string         `json:"frameworks,omitempty"`
+	Total       int              `json:"total"`
+	Showing     int              `json:"showing"`
+	Findings    []Finding        `json:"findings"`
 }
 
-// CheckResult represents a single check execution in the monitor's history.
-type CheckResult struct {
-	ID        int     `json:"id"`
-	Status    string  `json:"status"`
-	CheckedAt *string `json:"checkedAt"`
-	CreatedAt *string `json:"createdAt"`
-	Passed    *int    `json:"passed"`
-	Failed    *int    `json:"failed"`
-	Error     *string `json:"error"`
+// MetadataResource represents a pass/fail resource in monitor instance metadata.
+type MetadataResource struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	DisplayName string  `json:"displayName"`
+	Email       *string `json:"email"`
 }
 
-// MonitorDetail represents the detailed response for a monitor,
-// including its check result history.
+// CheckMetadata represents one connection's check result in a monitor instance.
+type CheckMetadata struct {
+	CheckResultStatus string             `json:"checkResultStatus"`
+	Type              string             `json:"type"`
+	Source            string             `json:"source"`
+	ConnectionID      int                `json:"connectionId"`
+	ClientID          string             `json:"clientId"`
+	ClientAlias       string             `json:"clientAlias"`
+	ClientType        string             `json:"clientType"`
+	Pass              []MetadataResource `json:"pass"`
+	Fail              []MetadataResource `json:"fail"`
+	Exclusions        []MetadataResource `json:"exclusions"`
+	Message           *string            `json:"message"`
+}
+
+// MonitorInstanceDetail represents a monitor instance in the details response.
+type MonitorInstanceDetail struct {
+	ID                            int             `json:"id"`
+	CheckResultStatus             string          `json:"checkResultStatus"`
+	CheckFrequency                string          `json:"checkFrequency"`
+	FailedTestDescription         string          `json:"failedTestDescription"`
+	RemedyDescription             string          `json:"remedyDescription"`
+	EvidenceCollectionDescription string          `json:"evidenceCollectionDescription"`
+	Metadata                      []CheckMetadata `json:"metadata"`
+}
+
+// MonitorDetail represents the detailed response for a monitor from the details endpoint.
 type MonitorDetail struct {
-	ID                int              `json:"id"`
-	Name              string           `json:"name"`
-	Description       string           `json:"description"`
-	CheckResultStatus string           `json:"checkResultStatus"`
-	CheckStatus       string           `json:"checkStatus"`
-	Priority          string           `json:"priority"`
-	LastCheck         *string          `json:"lastCheck"`
-	Controls          []MonitorControl `json:"controls"`
-	CheckResults      []CheckResult    `json:"checkResults"`
+	ID                int                     `json:"id"`
+	TestID            int                     `json:"testId"`
+	Name              string                  `json:"name"`
+	Description       string                  `json:"description"`
+	CheckResultStatus string                  `json:"checkResultStatus"`
+	CheckStatus       string                  `json:"checkStatus"`
+	Priority          string                  `json:"priority"`
+	LastCheck         *string                 `json:"lastCheck"`
+	Controls          []MonitorControl        `json:"controls"`
+	MonitorInstances  []MonitorInstanceDetail `json:"monitorInstances"`
 }
 
 type historyResult struct {
-	MonitorID    int              `json:"monitorId"`
-	MonitorName  string           `json:"monitorName"`
-	Controls     []MonitorControl `json:"controls,omitempty"`
-	Total        int              `json:"total"`
-	Showing      int              `json:"showing"`
-	CheckResults []CheckResult    `json:"checkResults"`
+	MonitorID   int              `json:"monitorId"`
+	MonitorName string           `json:"monitorName"`
+	Controls    []MonitorControl `json:"controls,omitempty"`
+	Frameworks  []string         `json:"frameworks,omitempty"`
+	Connections []connectionResult `json:"connections"`
+}
+
+type connectionResult struct {
+	Source      string `json:"source"`
+	ClientID    string `json:"clientId"`
+	ClientAlias string `json:"clientAlias"`
+	Status      string `json:"status"`
+	Passed      int    `json:"passed"`
+	Failed      int    `json:"failed"`
+	Excluded    int    `json:"excluded"`
 }
 
 type MonitorControl struct {
@@ -159,6 +192,7 @@ func uniqueFrameworks(controls []MonitorControl) []string {
 
 type Monitor struct {
 	ID                int              `json:"id"`
+	TestID            int              `json:"testId"`
 	Name              string           `json:"name"`
 	CheckResultStatus string           `json:"checkResultStatus"`
 	Priority          string           `json:"priority"`
@@ -166,7 +200,27 @@ type Monitor struct {
 	Controls          []MonitorControl `json:"controls"`
 }
 
-type monitorInstanceDetail struct {
+// lookupMonitor fetches all monitors and returns the one matching the given
+// instance ID. This is needed because the failures and details endpoints
+// require testId (the template ID), not the instance id.
+func lookupMonitor(c *client.Client, instanceID string) (*Monitor, error) {
+	items, err := c.GetAll("/public/monitors", nil)
+	if err != nil {
+		return nil, err
+	}
+	for _, raw := range items {
+		var m Monitor
+		if err := json.Unmarshal(raw, &m); err != nil {
+			continue
+		}
+		if fmt.Sprint(m.ID) == instanceID {
+			return &m, nil
+		}
+	}
+	return nil, fmt.Errorf("monitor %q not found", instanceID)
+}
+
+type monitorInstanceSummary struct {
 	FailedTestDescription         string `json:"failedTestDescription"`
 	RemedyDescription             string `json:"remedyDescription"`
 	EvidenceCollectionDescription string `json:"evidenceCollectionDescription"`
@@ -174,6 +228,7 @@ type monitorInstanceDetail struct {
 
 type MonitorInstance struct {
 	ID                int                     `json:"id"`
+	TestID            int                     `json:"testId"`
 	Name              string                  `json:"name"`
 	Description       string                  `json:"description"`
 	CheckResultStatus string                  `json:"checkResultStatus"`
@@ -181,7 +236,7 @@ type MonitorInstance struct {
 	Priority          string                  `json:"priority"`
 	LastCheck         *string                 `json:"lastCheck"`
 	Controls          []MonitorControl        `json:"controls"`
-	MonitorInstances  []monitorInstanceDetail `json:"monitorInstances"`
+	MonitorInstances  []monitorInstanceSummary `json:"monitorInstances"`
 }
 
 type monitorsResult struct {
@@ -353,54 +408,49 @@ func monitorsCmd() *cobra.Command {
 		Use:     "findings <id>",
 		Short:   "Show findings (failing resources) for a monitor, with compliance framework context",
 		Long:    "Lists the specific resources that are causing a monitor to fail, e.g. which S3 bucket, which ALB, which account. Shows which compliance frameworks are affected.",
-		Example: "  drata monitors findings 31\n  drata monitors findings 31 --json\n  drata monitors findings 31 --json --compact",
+		Example: "  drata monitors findings 128\n  drata monitors findings 128 --json\n  drata monitors findings 128 --json --compact",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			testID := args[0]
+			monitorID := args[0]
 			c := client.New()
 
-			// Fetch framework mapping and monitor controls for context
+			// Fetch framework mapping for enrichment
 			fwMap := controlFrameworkMap(c)
 
-			// Look up this monitor's controls from the monitors list
-			monitorItems, _ := c.GetAll("/public/monitors", nil)
-			var monitorControls []MonitorControl
-			for _, raw := range monitorItems {
-				var m Monitor
-				if err := json.Unmarshal(raw, &m); err != nil {
-					continue
-				}
-				if fmt.Sprint(m.ID) == testID {
-					monitorControls = m.Controls
-					break
-				}
+			// Look up monitor to get testId (the failures endpoint uses testId, not instance id)
+			mon, err := lookupMonitor(c, monitorID)
+			if err != nil {
+				return err
 			}
-			enrichControlsWithFrameworks(monitorControls, fwMap)
+			enrichControlsWithFrameworks(mon.Controls, fwMap)
 
 			wsID, err := getWorkspaceID(c)
 			if err != nil {
 				return err
 			}
 
-			path := fmt.Sprintf("/public/workspaces/%d/monitors/%s/failures", wsID, testID)
-			items, err := c.GetAll(path, nil)
+			// The failures endpoint requires a "type" param and uses testId.
+			// It does not support limit/page pagination.
+			path := fmt.Sprintf("/public/workspaces/%d/monitors/%d/failures?type=FAILED", wsID, mon.TestID)
+			raw, err := c.Get(path)
 			if err != nil {
-				return fmt.Errorf("fetch findings for monitor %s: %w", testID, err)
+				return fmt.Errorf("fetch findings for monitor %s: %w", monitorID, err)
+			}
+
+			var envelope struct {
+				Data []Finding `json:"data"`
+			}
+			if err := json.Unmarshal(raw, &envelope); err != nil {
+				return fmt.Errorf("parse findings: %w", err)
 			}
 
 			var result findingsResult
-			for _, raw := range items {
-				var f Finding
-				if err := json.Unmarshal(raw, &f); err != nil {
-					continue
-				}
-				result.Findings = append(result.Findings, f)
-			}
-			result.MonitorID, _ = strconv.Atoi(testID)
-			result.Controls = monitorControls
-			result.Frameworks = uniqueFrameworks(monitorControls)
-			result.Total = len(result.Findings)
-			result.Findings = output.LimitSlice(result.Findings)
+			result.MonitorID = mon.ID
+			result.MonitorName = mon.Name
+			result.Controls = mon.Controls
+			result.Frameworks = uniqueFrameworks(mon.Controls)
+			result.Total = len(envelope.Data)
+			result.Findings = output.LimitSlice(envelope.Data)
 			result.Showing = len(result.Findings)
 
 			output.Print(result, formatFindings(result), compactFinding)
@@ -408,29 +458,36 @@ func monitorsCmd() *cobra.Command {
 		},
 	}
 
-	// history — show check history for a monitor
+	// history — show check details for a monitor (per-connection pass/fail breakdown)
 	historyCmd := &cobra.Command{
 		Use:     "history <id>",
-		Short:   "Show check history (pass/fail over time) for a monitor",
-		Long:    "Shows when checks ran, whether they passed or failed, and pass/fail counts over time. Includes compliance frameworks.",
-		Example: "  drata monitors history 31\n  drata monitors history 31 --json\n  drata monitors history 31 --limit 10",
+		Short:   "Show check details per connection for a monitor",
+		Long:    "Shows the per-connection check results: which AWS accounts/connections are passing or failing, with resource counts. Includes compliance frameworks.",
+		Example: "  drata monitors history 128\n  drata monitors history 128 --json",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			testID := args[0]
+			monitorID := args[0]
 			c := client.New()
 
 			// Fetch framework mapping for enrichment
 			fwMap := controlFrameworkMap(c)
+
+			// Look up monitor to get testId (the details endpoint uses testId)
+			mon, err := lookupMonitor(c, monitorID)
+			if err != nil {
+				return err
+			}
+			enrichControlsWithFrameworks(mon.Controls, fwMap)
 
 			wsID, err := getWorkspaceID(c)
 			if err != nil {
 				return err
 			}
 
-			path := fmt.Sprintf("/public/workspaces/%d/monitors/%s/details", wsID, testID)
+			path := fmt.Sprintf("/public/workspaces/%d/monitors/%d/details", wsID, mon.TestID)
 			raw, err := c.Get(path)
 			if err != nil {
-				return fmt.Errorf("fetch history for monitor %s: %w", testID, err)
+				return fmt.Errorf("fetch details for monitor %s: %w", monitorID, err)
 			}
 
 			var detail MonitorDetail
@@ -438,16 +495,26 @@ func monitorsCmd() *cobra.Command {
 				return fmt.Errorf("parse monitor detail: %w", err)
 			}
 
-			enrichControlsWithFrameworks(detail.Controls, fwMap)
-
 			var result historyResult
 			result.MonitorID = detail.ID
 			result.MonitorName = detail.Name
-			result.Controls = detail.Controls
-			result.CheckResults = detail.CheckResults
-			result.Total = len(result.CheckResults)
-			result.CheckResults = output.LimitSlice(result.CheckResults)
-			result.Showing = len(result.CheckResults)
+			result.Controls = mon.Controls
+			result.Frameworks = uniqueFrameworks(mon.Controls)
+
+			// Extract per-connection check results from monitor instances metadata
+			for _, inst := range detail.MonitorInstances {
+				for _, meta := range inst.Metadata {
+					result.Connections = append(result.Connections, connectionResult{
+						Source:      meta.Source,
+						ClientID:    meta.ClientID,
+						ClientAlias: meta.ClientAlias,
+						Status:      meta.CheckResultStatus,
+						Passed:      len(meta.Pass),
+						Failed:      len(meta.Fail),
+						Excluded:    len(meta.Exclusions),
+					})
+				}
+			}
 
 			output.Print(result, formatHistory(result), compactHistory)
 			return nil
@@ -523,43 +590,43 @@ func compactFinding(v any) any {
 	switch f := v.(type) {
 	case Finding:
 		return map[string]any{
-			"resourceExternalId": f.ResourceExternalID,
-			"resourceType":       f.ResourceType,
-			"status":             f.Status,
-			"accountId":          f.AccountID,
-			"region":             f.Region,
+			"id":           f.ID,
+			"resourceName": f.ResourceName,
+			"displayName":  f.DisplayName,
+			"provider":     f.ProviderName,
+			"accountId":    f.AccountID,
+			"clientAlias":  f.ClientAlias,
 		}
 	case findingsResult:
 		compact := make([]any, len(f.Findings))
 		for i, finding := range f.Findings {
 			compact[i] = compactFinding(finding)
 		}
-		return map[string]any{"monitorId": f.MonitorID, "total": f.Total, "showing": f.Showing, "findings": compact}
+		return map[string]any{"monitorId": f.MonitorID, "monitorName": f.MonitorName, "total": f.Total, "showing": f.Showing, "findings": compact}
 	}
 	return v
 }
 
 func compactHistory(v any) any {
 	switch h := v.(type) {
-	case CheckResult:
-		ts := ""
-		if h.CheckedAt != nil {
-			ts = *h.CheckedAt
-		} else if h.CreatedAt != nil {
-			ts = *h.CreatedAt
+	case connectionResult:
+		return map[string]any{
+			"source":      h.Source,
+			"clientAlias": h.ClientAlias,
+			"status":      h.Status,
+			"passed":      h.Passed,
+			"failed":      h.Failed,
+			"excluded":    h.Excluded,
 		}
-		return map[string]any{"status": h.Status, "checkedAt": ts}
 	case historyResult:
-		compact := make([]any, len(h.CheckResults))
-		for i, cr := range h.CheckResults {
+		compact := make([]any, len(h.Connections))
+		for i, cr := range h.Connections {
 			compact[i] = compactHistory(cr)
 		}
 		return map[string]any{
-			"monitorId":    h.MonitorID,
-			"monitorName":  h.MonitorName,
-			"total":        h.Total,
-			"showing":      h.Showing,
-			"checkResults": compact,
+			"monitorId":   h.MonitorID,
+			"monitorName": h.MonitorName,
+			"connections": compact,
 		}
 	}
 	return v
@@ -567,8 +634,12 @@ func compactHistory(v any) any {
 
 func formatFindings(r findingsResult) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "%s  monitor=%d  total=%d  showing=%d\n",
-		output.Bold("Findings"), r.MonitorID, r.Total, r.Showing)
+	header := r.MonitorName
+	if header == "" {
+		header = fmt.Sprintf("Monitor %d", r.MonitorID)
+	}
+	fmt.Fprintf(&sb, "%s  total=%d  showing=%d\n",
+		output.Bold("Findings: "+header), r.Total, r.Showing)
 	if len(r.Controls) > 0 {
 		fmt.Fprintf(&sb, "Controls: %s\n", output.Cyan(controlCodesWithFrameworks(r.Controls)))
 	}
@@ -583,44 +654,34 @@ func formatFindings(r findingsResult) string {
 	}
 
 	for _, f := range r.Findings {
-		status := f.Status
-		if status == "" {
-			status = "FAILED"
-		}
-		excludedTag := ""
-		if f.IsExcluded {
-			excludedTag = output.Dim(" [excluded]")
-		}
-		name := f.ResourceName
+		name := f.DisplayName
 		if name == "" {
-			name = f.ResourceExternalID
+			name = f.ResourceName
 		}
-		fmt.Fprintf(&sb, "  %s  %s%s\n",
-			output.Col(output.StatusColor(status), 22),
-			name,
-			excludedTag)
+		if name == "" {
+			name = f.ID
+		}
+		fmt.Fprintf(&sb, "  %s  %s\n",
+			output.Col(output.Red("FAILED"), 22),
+			name)
 
 		var details []string
-		if f.ResourceType != "" {
-			details = append(details, "type="+f.ResourceType)
+		if f.ProviderName != "" {
+			details = append(details, "provider="+f.ProviderName)
 		}
-		if f.AccountID != "" {
+		if f.ClientAlias != "" {
+			details = append(details, "account="+f.ClientAlias)
+		} else if f.AccountID != "" {
 			details = append(details, "account="+f.AccountID)
 		}
-		if f.Region != "" {
-			details = append(details, "region="+f.Region)
-		}
-		if f.ConnectionName != "" {
-			details = append(details, "connection="+f.ConnectionName)
-		}
-		if f.FailedAt != nil {
-			details = append(details, "failed="+shortTime(*f.FailedAt))
+		if f.ResourceArn != "" {
+			details = append(details, "arn="+f.ResourceArn)
 		}
 		if len(details) > 0 {
 			fmt.Fprintf(&sb, "       %s\n", output.Dim(strings.Join(details, "  ")))
 		}
-		if f.Description != "" {
-			fmt.Fprintf(&sb, "       %s\n", output.Dim(f.Description))
+		if f.FailingMessage != "" {
+			fmt.Fprintf(&sb, "       %s\n", output.Dim(f.FailingMessage))
 		}
 	}
 	return sb.String()
@@ -632,51 +693,36 @@ func formatHistory(r historyResult) string {
 	if header == "" {
 		header = fmt.Sprintf("Monitor %d", r.MonitorID)
 	}
-	fmt.Fprintf(&sb, "%s  total=%d  showing=%d\n",
-		output.Bold("Check History: "+header), r.Total, r.Showing)
+	fmt.Fprintf(&sb, "%s  connections=%d\n",
+		output.Bold("Check Details: "+header), len(r.Connections))
 	if len(r.Controls) > 0 {
 		fmt.Fprintf(&sb, "Controls: %s\n", output.Cyan(controlCodesWithFrameworks(r.Controls)))
-		fws := uniqueFrameworks(r.Controls)
-		if len(fws) > 0 {
-			fmt.Fprintf(&sb, "Frameworks: %s\n", output.Yellow(frameworkDisplay(fws)))
-		}
+	}
+	if len(r.Frameworks) > 0 {
+		fmt.Fprintf(&sb, "Frameworks: %s\n", output.Yellow(frameworkDisplay(r.Frameworks)))
 	}
 	fmt.Fprintln(&sb)
 
-	if len(r.CheckResults) == 0 {
-		fmt.Fprintf(&sb, "  %s\n", output.Dim("No check history available."))
+	if len(r.Connections) == 0 {
+		fmt.Fprintf(&sb, "  %s\n", output.Dim("No check details available."))
 		return sb.String()
 	}
 
-	for _, cr := range r.CheckResults {
-		ts := ""
-		if cr.CheckedAt != nil {
-			ts = shortTime(*cr.CheckedAt)
-		} else if cr.CreatedAt != nil {
-			ts = shortTime(*cr.CreatedAt)
+	for _, cr := range r.Connections {
+		alias := cr.ClientAlias
+		if alias == "" {
+			alias = cr.ClientID
 		}
-		counts := ""
-		if cr.Passed != nil || cr.Failed != nil {
-			p, f := 0, 0
-			if cr.Passed != nil {
-				p = *cr.Passed
-			}
-			if cr.Failed != nil {
-				f = *cr.Failed
-			}
-			counts = fmt.Sprintf("  passed=%s failed=%s",
-				output.Green(fmt.Sprint(p)),
-				output.Red(fmt.Sprint(f)))
+		fmt.Fprintf(&sb, "  %s  %s  %s  passed=%s  failed=%s",
+			output.Col(output.StatusColor(cr.Status), 22),
+			output.Col(cr.Source, 6),
+			output.Col(alias, 30),
+			output.Green(fmt.Sprint(cr.Passed)),
+			output.Red(fmt.Sprint(cr.Failed)))
+		if cr.Excluded > 0 {
+			fmt.Fprintf(&sb, "  excluded=%s", output.Dim(fmt.Sprint(cr.Excluded)))
 		}
-		errMsg := ""
-		if cr.Error != nil && *cr.Error != "" {
-			errMsg = "  " + output.Red("error: "+*cr.Error)
-		}
-		fmt.Fprintf(&sb, "  %s  %s%s%s\n",
-			output.Col(output.Dim(ts), 22),
-			output.StatusColor(cr.Status),
-			counts,
-			errMsg)
+		fmt.Fprintln(&sb)
 	}
 	return sb.String()
 }
