@@ -105,6 +105,13 @@ type connectionResult struct {
 	Excluded    int    `json:"excluded"`
 }
 
+type retestResult struct {
+	MonitorID   int    `json:"monitorId"`
+	MonitorName string `json:"monitorName"`
+	TestID      int    `json:"testId"`
+	Status      string `json:"status"`
+}
+
 type MonitorControl struct {
 	ID         int      `json:"id"`
 	Code       string   `json:"code"`
@@ -521,7 +528,56 @@ func monitorsCmd() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(listCmd, failingCmd, getCmd, forControlCmd, findingsCmd, historyCmd)
+	// retest — trigger a retest for a monitor
+	retestCmd := &cobra.Command{
+		Use:     "retest <id>",
+		Short:   "Trigger a retest for a monitor",
+		Long:    "Triggers an immediate retest of a monitor's autopilot check. The monitor ID is the instance ID shown in 'drata monitors list'.",
+		Example: "  drata monitors retest 128\n  drata monitors retest 128 --json",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			monitorID := args[0]
+			c := client.New()
+
+			// Look up monitor to get testId and name
+			mon, err := lookupMonitor(c, monitorID)
+			if err != nil {
+				return err
+			}
+
+			wsID, err := getWorkspaceID(c)
+			if err != nil {
+				return err
+			}
+
+			path := fmt.Sprintf("/public/workspaces/%d/autopilot/%d/retest", wsID, mon.TestID)
+			_, err = c.Post(path)
+			if err != nil {
+				return fmt.Errorf("retest monitor %s (%s): %w", monitorID, mon.Name, err)
+			}
+
+			result := retestResult{
+				MonitorID:   mon.ID,
+				MonitorName: mon.Name,
+				TestID:      mon.TestID,
+				Status:      "retest triggered",
+			}
+
+			output.Print(result, formatRetest(result), func(v any) any {
+				if r, ok := v.(retestResult); ok {
+					return map[string]any{
+						"monitorId":   r.MonitorID,
+						"monitorName": r.MonitorName,
+						"status":      r.Status,
+					}
+				}
+				return v
+			})
+			return nil
+		},
+	}
+
+	cmd.AddCommand(listCmd, failingCmd, getCmd, forControlCmd, findingsCmd, historyCmd, retestCmd)
 	return cmd
 }
 
@@ -725,6 +781,11 @@ func formatHistory(r historyResult) string {
 		fmt.Fprintln(&sb)
 	}
 	return sb.String()
+}
+
+func formatRetest(r retestResult) string {
+	return fmt.Sprintf("%s  Retest triggered for %s [%d]\n",
+		output.Green("OK"), r.MonitorName, r.MonitorID)
 }
 
 // shortTime formats an ISO timestamp for display, showing date and time.

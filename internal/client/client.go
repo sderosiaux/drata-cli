@@ -111,7 +111,16 @@ func (c *Client) GetAll(path string, params url.Values) ([]json.RawMessage, erro
 	return all, nil
 }
 
+// Post sends an HTTP POST with no body and returns the raw JSON response.
+func (c *Client) Post(path string) (json.RawMessage, error) {
+	return c.doMethod(http.MethodPost, path, nil)
+}
+
 func (c *Client) do(path string, params url.Values) (json.RawMessage, error) {
+	return c.doMethod(http.MethodGet, path, params)
+}
+
+func (c *Client) doMethod(method, path string, params url.Values) (json.RawMessage, error) {
 	u := c.baseURL + path
 	if len(params) > 0 {
 		u += "?" + params.Encode()
@@ -123,7 +132,7 @@ func (c *Client) do(path string, params url.Values) (json.RawMessage, error) {
 			time.Sleep(time.Duration(baseDelayMs*(1<<(attempt-1))) * time.Millisecond)
 		}
 
-		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u, nil)
+		req, err := http.NewRequestWithContext(context.Background(), method, u, nil)
 		if err != nil {
 			return nil, err
 		}
